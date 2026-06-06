@@ -5,9 +5,9 @@ project(game_server CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if(NOT CMAKE_C_COMPILER)
-    set(CMAKE_C_COMPILER ${CMAKE_CXX_COMPILER})
-endif()
+# Заглушка для C компилятора
+set(CMAKE_C_COMPILER_WORKS TRUE)
+set(CMAKE_C_COMPILER gcc)
 
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup()
