@@ -23,3 +23,7 @@ target_link_libraries(game_server
 )
 
 target_include_directories(game_server PRIVATE ${Boost_INCLUDE_DIRS})
+
+# Заглушка для C компилятора (не используется)
+set(CMAKE_C_COMPILER_WORKS TRUE)
+set(CMAKE_C_COMPILER gcc)
