@@ -1,35 +1,31 @@
-cmake_minimum_required(VERSION 3.10)
-project(game_server)
+cmake_minimum_required(VERSION 3.11)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+project(game_server CXX)
+set(CMAKE_CXX_STANDARD 20)
 
-# Указываем путь к новой Boost (1.83.0)
-set(BOOST_ROOT /usr/local)
-set(BOOST_INCLUDEDIR /usr/local/include)
-set(BOOST_LIBRARYDIR /usr/local/lib)
+include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+conan_basic_setup()
 
-find_package(Boost 1.83.0 REQUIRED COMPONENTS system)
+find_package(Boost 1.78.0 REQUIRED)
+if(Boost_FOUND)
+  include_directories(${Boost_INCLUDE_DIRS})
+endif()
 
-# Скачиваем nlohmann/json
-include(FetchContent)
-FetchContent_Declare(
-    json
-    URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
+add_executable(game_server
+	src/main.cpp
+	src/http_server.cpp
+	src/http_server.h
+	src/sdk.h
+	src/model.h
+	src/model.cpp
+	src/tagged.h
+	src/boost_json.cpp
+	src/json_loader.h
+	src/json_loader.cpp
+	src/request_handler.cpp
+	src/request_handler.h
 )
-FetchContent_MakeAvailable(json)
-
-add_executable(game_server 
-    main.cpp 
-    json_loader.cpp
-)
-
-target_link_libraries(game_server 
-    ${Boost_LIBRARIES} 
-    pthread
-)
-
-target_include_directories(game_server PRIVATE 
-    ${Boost_INCLUDE_DIRS}
-    ${json_SOURCE_DIR}/include
-)
+target_link_libraries(game_server PRIVATE Threads::Threads)
