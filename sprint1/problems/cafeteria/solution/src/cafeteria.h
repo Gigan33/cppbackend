@@ -24,27 +24,25 @@ public:
 
     void OrderHotDog(HotDogHandler handler) {
         static int order_counter = 0;
-        auto order_id = std::make_shared<int>(++order_counter);
+        int order_id = ++order_counter;
         auto bread = store_.GetBread();
         auto sausage = store_.GetSausage();
         auto cooker = gas_cooker_;
         
         auto ready_count = std::make_shared<int>(0);
-        auto result = std::make_shared<Result<HotDog>>(std::make_exception_ptr(std::runtime_error("Not ready")));
         
-        auto check_ready = [handler, ready_count, result, bread, sausage, order_id]() {
+        auto check_ready = [handler, ready_count, bread, sausage, order_id]() {
             if (++(*ready_count) == 2) {
                 try {
-                    HotDog hotdog(*order_id, sausage, bread);
-                    *result = std::move(hotdog);
-                    handler(std::move(*result));
+                    HotDog hotdog(order_id, sausage, bread);
+                    handler(std::move(hotdog));
                 } catch (const std::exception& e) {
-                    *result = std::make_exception_ptr(std::runtime_error(e.what()));
-                    handler(std::move(*result));
+                    handler(std::make_exception_ptr(std::runtime_error(e.what())));
                 }
             }
         };
         
+        // Выпекаем булку
         bread->StartBake(*cooker, [bread, cooker, check_ready, this]() {
             auto timer = std::make_shared<net::steady_timer>(io_);
             timer->expires_after(std::chrono::milliseconds(1250));
@@ -54,6 +52,7 @@ public:
             });
         });
         
+        // Жарим сосиску
         sausage->StartFry(*cooker, [sausage, cooker, check_ready, this]() {
             auto timer = std::make_shared<net::steady_timer>(io_);
             timer->expires_after(std::chrono::milliseconds(1750));

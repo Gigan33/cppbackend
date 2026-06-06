@@ -1,11 +1,11 @@
 #pragma once
-#include <chrono>
 #include <functional>
 #include <optional>
 #include <stdexcept>
+#include <cassert>
 
-#include "gascooker.h"
 #include "clock.h"
+#include "gascooker.h"
 
 class Sausage : public std::enable_shared_from_this<Sausage> {
 public:
