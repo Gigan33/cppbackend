@@ -5,7 +5,18 @@ project(game_server CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Boost 1.78.0 REQUIRED COMPONENTS system)
+# Указываем фиктивный C компилятор
+if(NOT CMAKE_C_COMPILER)
+    set(CMAKE_C_COMPILER ${CMAKE_CXX_COMPILER})
+endif()
+
+include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+conan_basic_setup()
+
+find_package(Boost 1.78.0 REQUIRED)
+if(Boost_FOUND)
+  include_directories(${Boost_INCLUDE_DIRS})
+endif()
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
@@ -17,13 +28,4 @@ add_executable(game_server
     src/model.cpp
 )
 
-target_link_libraries(game_server 
-    ${Boost_LIBRARIES}
-    Threads::Threads
-)
-
-target_include_directories(game_server PRIVATE ${Boost_INCLUDE_DIRS})
-
-# Заглушка для C компилятора (не используется)
-set(CMAKE_C_COMPILER_WORKS TRUE)
-set(CMAKE_C_COMPILER gcc)
+target_link_libraries(game_server PRIVATE Threads::Threads)
