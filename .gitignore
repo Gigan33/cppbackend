@@ -730,3 +730,23 @@ sprint3/problems/flamegraph/solution/graph.svg
 *.xml
 
 **/.DS_Store
+
+# Build artifacts
+build/
+.conan/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CMakeFiles/
+*.o
+*.exe
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+*.log

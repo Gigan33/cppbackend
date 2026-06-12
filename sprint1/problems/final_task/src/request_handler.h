@@ -11,6 +11,11 @@ namespace json = boost::json;
 
 using StringResponse = http::response<http::string_body>;
 
+// Константы для эндпоинтов
+inline constexpr std::string_view API_PREFIX = "/api/";
+inline constexpr std::string_view MAPS_ENDPOINT = "/api/v1/maps";
+inline constexpr std::string_view MAPS_PREFIX = "/api/v1/maps/";
+
 class RequestHandler {
 public:
     explicit RequestHandler(model::Game& game)
@@ -25,19 +30,19 @@ public:
         std::string target(req.target());
         StringResponse response;
         
-        if (target.rfind("/api/", 0) != 0) {
+        if (target.rfind(API_PREFIX.data(), 0) != 0) {
             response = MakeBadRequestResponse(req.version(), req.keep_alive());
         }
-        else if (target == "/api/v1/maps") {
+        else if (target == MAPS_ENDPOINT) {
             if (req.method() == http::verb::get) {
                 response = MakeMapsListResponse(req.version(), req.keep_alive());
             } else {
                 response = MakeBadRequestResponse(req.version(), req.keep_alive());
             }
         }
-        else if (target.rfind("/api/v1/maps/", 0) == 0) {
+        else if (target.rfind(MAPS_PREFIX.data(), 0) == 0) {
             if (req.method() == http::verb::get) {
-                std::string map_id = target.substr(13);
+                std::string map_id = target.substr(MAPS_PREFIX.size());
                 response = MakeMapResponse(map_id, req.version(), req.keep_alive());
             } else {
                 response = MakeBadRequestResponse(req.version(), req.keep_alive());
