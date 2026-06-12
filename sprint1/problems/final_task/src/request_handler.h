@@ -56,6 +56,66 @@ public:
     }
 
 private:
+    // Вспомогательные функции для сериализации
+    json::array SerializeRoads(const model::Map* map) const {
+        json::array roads_arr;
+        for (const auto& road : map->GetRoads()) {
+            json::object road_obj;
+            auto start = road.GetStart();
+            auto end = road.GetEnd();
+            if (road.IsHorizontal()) {
+                road_obj["x0"] = start.x;
+                road_obj["y0"] = start.y;
+                road_obj["x1"] = end.x;
+            } else {
+                road_obj["x0"] = start.x;
+                road_obj["y0"] = start.y;
+                road_obj["y1"] = end.y;
+            }
+            roads_arr.push_back(road_obj);
+        }
+        return roads_arr;
+    }
+
+    json::array SerializeBuildings(const model::Map* map) const {
+        json::array buildings_arr;
+        for (const auto& building : map->GetBuildings()) {
+            json::object building_obj;
+            auto bounds = building.GetBounds();
+            building_obj["x"] = bounds.position.x;
+            building_obj["y"] = bounds.position.y;
+            building_obj["w"] = bounds.size.width;
+            building_obj["h"] = bounds.size.height;
+            buildings_arr.push_back(building_obj);
+        }
+        return buildings_arr;
+    }
+
+    json::array SerializeOffices(const model::Map* map) const {
+        json::array offices_arr;
+        for (const auto& office : map->GetOffices()) {
+            json::object office_obj;
+            office_obj["id"] = *office.GetId();
+            office_obj["x"] = office.GetPosition().x;
+            office_obj["y"] = office.GetPosition().y;
+            office_obj["offsetX"] = office.GetOffset().dx;
+            office_obj["offsetY"] = office.GetOffset().dy;
+            offices_arr.push_back(office_obj);
+        }
+        return offices_arr;
+    }
+
+    json::object SerializeMap(const model::Map* map) const {
+        json::object result;
+        result["id"] = *map->GetId();
+        result["name"] = map->GetName();
+        result["roads"] = SerializeRoads(map);
+        result["buildings"] = SerializeBuildings(map);
+        result["offices"] = SerializeOffices(map);
+        return result;
+    }
+
+    // Функции формирования ответов
     StringResponse MakeBadRequestResponse(unsigned version, bool keep_alive) {
         StringResponse response(http::status::bad_request, version);
         response.set(http::field::content_type, "application/json");
@@ -101,51 +161,7 @@ private:
         StringResponse response(http::status::ok, version);
         response.set(http::field::content_type, "application/json");
         
-        json::object result;
-        result["id"] = *map->GetId();
-        result["name"] = map->GetName();
-        
-        json::array roads_arr;
-        for (const auto& road : map->GetRoads()) {
-            json::object road_obj;
-            auto start = road.GetStart();
-            auto end = road.GetEnd();
-            if (road.IsHorizontal()) {
-                road_obj["x0"] = start.x;
-                road_obj["y0"] = start.y;
-                road_obj["x1"] = end.x;
-            } else {
-                road_obj["x0"] = start.x;
-                road_obj["y0"] = start.y;
-                road_obj["y1"] = end.y;
-            }
-            roads_arr.push_back(road_obj);
-        }
-        result["roads"] = roads_arr;
-        
-        json::array buildings_arr;
-        for (const auto& building : map->GetBuildings()) {
-            json::object building_obj;
-            auto bounds = building.GetBounds();
-            building_obj["x"] = bounds.position.x;
-            building_obj["y"] = bounds.position.y;
-            building_obj["w"] = bounds.size.width;
-            building_obj["h"] = bounds.size.height;
-            buildings_arr.push_back(building_obj);
-        }
-        result["buildings"] = buildings_arr;
-        
-        json::array offices_arr;
-        for (const auto& office : map->GetOffices()) {
-            json::object office_obj;
-            office_obj["id"] = *office.GetId();
-            office_obj["x"] = office.GetPosition().x;
-            office_obj["y"] = office.GetPosition().y;
-            office_obj["offsetX"] = office.GetOffset().dx;
-            office_obj["offsetY"] = office.GetOffset().dy;
-            offices_arr.push_back(office_obj);
-        }
-        result["offices"] = offices_arr;
+        json::object result = SerializeMap(map);
         
         response.body() = json::serialize(result);
         response.content_length(response.body().size());

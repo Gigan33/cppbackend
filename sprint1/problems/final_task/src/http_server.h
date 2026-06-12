@@ -32,11 +32,13 @@ protected:
     explicit SessionBase(tcp::socket&& socket) : stream_(std::move(socket)) {}
     ~SessionBase() = default;
 
-    void Close() {
-        beast::error_code ec;
-        stream_.socket().shutdown(tcp::socket::shutdown_send, ec);
+void Close() {
+    beast::error_code ec;
+    stream_.socket().shutdown(tcp::socket::shutdown_send, ec);
+    if (ec) {
+        std::cerr << "Socket shutdown error: " << ec.message() << std::endl;
     }
-
+}
     template <typename Body, typename Fields>
     void Write(http::response<Body, Fields>&& response) {
         auto safe_response = std::make_shared<http::response<Body, Fields>>(std::move(response));
