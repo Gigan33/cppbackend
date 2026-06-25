@@ -78,10 +78,6 @@ int main(int argc, const char* argv[]) {
             logging_handler(std::forward<decltype(req)>(req), std::forward<decltype(send)>(send));
         });
 
-        // 9. Железобетонный вывод для автотестов (в stdout и stderr с принудительным flush)
-        std::cout << "Server started" << std::endl;
-        std::cerr << "Server started" << std::endl;
-
         // Логируем структурированный старт сервера через твой логер
         json::object start_data;
         start_data["port"] = port;
