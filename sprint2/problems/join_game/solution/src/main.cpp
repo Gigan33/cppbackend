@@ -41,9 +41,8 @@ int main(int argc, const char* argv[]) {
     }
     
     try {
-        // 1. Инициализируем логирование
-        Logger::GetInstance().Init();
-        auto& logger = Logger::GetInstance();
+        // 1. Инициализируем нативный Boost.Log форматтер
+        Logger::Init();
         
         // 2. Загружаем модель игры и статику из аргументов командной строки
         model::Game game = json_loader::LoadGame(argv[1]);
@@ -53,12 +52,12 @@ int main(int argc, const char* argv[]) {
         const unsigned num_threads = std::thread::hardware_concurrency();
         net::io_context ioc(num_threads);
 
-        // 4. Настраиваем асинхронный перехват сигналов остановки (Ctrl+C и деплой)
+        // 4. Настраиваем асинхронный перехват сигналов остановки
         net::signal_set signals(ioc, SIGINT, SIGTERM);
-        signals.async_wait([&logger, &ioc](const boost::system::error_code&, int) {
-            boost::json::object data;
-            data["code"] = 0;
-            logger.LogJson("server exited", data);
+        signals.async_wait([&ioc](const boost::system::error_code&, int) {
+            boost::json::value exit_data{{"code", 0}};
+            BOOST_LOG_TRIVIAL(info) << boost::log::add_value(additional_data, exit_data)
+                                    << "server exited";
             ioc.stop();
         });
 
@@ -69,7 +68,7 @@ int main(int argc, const char* argv[]) {
         // 6. Создаем strand для последовательного выполнения API-запросов
         auto api_strand = net::make_strand(ioc);
         
-        // 7. Создаем RequestHandler в куче через shared_ptr, отдавая ему управление
+        // 7. Создаем RequestHandler
         auto handler = std::make_shared<http_handler::RequestHandler>(game, static_dir, api_strand);
         
         // 8. Декорируем наш обработчик логированием
@@ -80,22 +79,20 @@ int main(int argc, const char* argv[]) {
             logging_handler(std::forward<decltype(req)>(req), std::forward<decltype(send)>(send));
         });
 
-        // Лoгируем успешный старт
-        boost::json::object start_data;
-        start_data["port"] = port;
-        start_data["address"] = address.to_string();
-        logger.LogJson("server started", start_data);
+        // 10. Логируем успешный старт строго через Boost.Log
+        boost::json::value start_data{{"port", port}, {"address", address.to_string()}};
+        BOOST_LOG_TRIVIAL(info) << boost::log::add_value(additional_data, start_data)
+                                << "server started";
 
-        // 10. Запускаем пул потоков для параллельной обработки
+        // 11. Запускаем пул потоков для параллельной обработки
         RunWorkers(std::max(1u, num_threads), [&ioc] {
             ioc.run();
         });
         
     } catch (const std::exception& ex) {
-        boost::json::object data;
-        data["code"] = EXIT_FAILURE;
-        data["exception"] = ex.what();
-        Logger::GetInstance().LogJson("server exited", data);
+        boost::json::value exit_data{{"code", EXIT_FAILURE}, {"exception", ex.what()}};
+        BOOST_LOG_TRIVIAL(info) << boost::log::add_value(additional_data, exit_data)
+                                << "server exited";
         std::cerr << ex.what() << std::endl;
         return EXIT_FAILURE;
     }
