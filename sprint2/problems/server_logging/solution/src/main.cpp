@@ -40,20 +40,15 @@ int main(int argc, const char* argv[]) {
     }
     
     try {
-        // 1. Инициализируем логер Практикума
-        Logger::GetInstance().Init();
+        // Инициализируем кастомный Boost.Log форматтер
+        Logger::Init();
 
-        // Читаем аргументы командной строки
         const std::filesystem::path config_path = argv[1];
         const std::filesystem::path static_dir = argv[2];
 
-        // 2. Загружаем модель игры из JSON
         model::Game game = json_loader::LoadGame(config_path);
-
-        // 3. Создаем io_context
         net::io_context ioc;
 
-        // 4. Добавляем асинхронное отслеживание сигналов остановки (SIGINT, SIGTERM)
         net::signal_set signals(ioc, SIGINT, SIGTERM);
         signals.async_wait([&ioc](const boost::system::error_code& ec, int signal_number) {
             if (!ec) {
@@ -64,38 +59,35 @@ int main(int argc, const char* argv[]) {
         const auto address = net::ip::make_address("0.0.0.0");
         constexpr unsigned short port = 8080;
         
-        // 5. Создаем strand для последовательного выполнения запросов к API
         auto api_strand = net::make_strand(ioc);
-        
-        // 6. Создаем RequestHandler (передаем game, static_dir и strand)
         auto handler = std::make_shared<http_handler::RequestHandler>(game, static_dir.string(), api_strand);
         
-        // 7. Оборачиваем в декоратор логирования
         http_handler::LoggingHandler<http_handler::RequestHandler> logging_handler(*handler);
         
-        // 8. Запускаем HTTP-сервер
         http_server::ServeHttp(ioc, {address, port}, [&logging_handler](auto&& req, auto&& send) {
             logging_handler(std::forward<decltype(req)>(req), std::forward<decltype(send)>(send));
         });
 
-        // Логируем структурированный старт сервера через твой логер
-        json::object start_data;
-        start_data["port"] = port;
-        start_data["address"] = address.to_string();
-        Logger::GetInstance().LogJson("server started", start_data);
+        // ЛОГИРОВАНИЕ СТАРТА строго по заданию через Boost.Log
+        json::value start_data{{"port", port}, {"address", address.to_string()}};
+        BOOST_LOG_TRIVIAL(info) << logging::add_value(additional_data, start_data)
+                                << "server started";
 
-        // 10. Запускаем пул потоков для асинхронной работы сервера
         const unsigned num_threads = std::thread::hardware_concurrency();
         RunWorkers(num_threads, [&ioc] {
             ioc.run();
         });
 
+        // ЛОГИРОВАНИЕ УСПЕШНОГО ВЫХОДА
+        json::value exit_data{{"code", 0}};
+        BOOST_LOG_TRIVIAL(info) << logging::add_value(additional_data, exit_data)
+                                << "server exited";
+
     } catch (const std::exception& ex) {
-        json::object data;
-        data["code"] = EXIT_FAILURE;
-        data["exception"] = ex.what();
-        Logger::GetInstance().LogJson("server exited", data);
-        std::cerr << "Server exited with exception: " << ex.what() << std::endl;
+        // ЛОГИРОВАНИЕ КРИТИЧЕСКОГО ВЫХОДА
+        json::value exit_data{{"code", EXIT_FAILURE}, {"exception", ex.what()}};
+        BOOST_LOG_TRIVIAL(info) << logging::add_value(additional_data, exit_data)
+                                << "server exited";
         return EXIT_FAILURE;
     }
     
