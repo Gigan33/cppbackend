@@ -2,11 +2,13 @@
 #include "http_server.h"
 #include "model.h"
 #include <boost/json.hpp>
+#include <boost/asio/strand.hpp>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <cctype>
 #include <algorithm>
+#include <cassert>
 
 namespace fs = std::filesystem;
 
@@ -44,7 +46,7 @@ inline std::string UrlDecode(std::string_view encoded) {
     }
     
     return result;
-}
+} // <- ВОТ ЭТА СКОБКА БЫЛА ПОТЕРЯНА!
 
 inline std::string_view GetMimeType(const fs::path& filepath) {
     std::string ext = filepath.extension().string();
@@ -70,10 +72,8 @@ inline std::string_view GetMimeType(const fs::path& filepath) {
 
 class RequestHandler : public std::enable_shared_from_this<RequestHandler> {
 public:
-    // Определяем тип Strand для удобства
     using Strand = boost::asio::strand<boost::asio::io_context::executor_type>;
 
-    // Обновленный конструктор: принимает Strand по значению и перемещает его
     explicit RequestHandler(model::Game& game, std::string static_dir, Strand api_strand)
         : game_{game}
         , static_dir_{std::move(static_dir)}
@@ -88,16 +88,10 @@ public:
         std::string target(req.target());
         std::string decoded_target = UrlDecode(target);
         
-        // Обработка API — перенаправляем в strand последовательно
         if (decoded_target.rfind(API_PREFIX.data(), 0) == 0) {
-            
-            // Формируем асинхронную задачу для strand
-            // mutable нужен, так как мы перемещаем (std::move) объект запроса req внутрь лямбды
             auto handle = [self = shared_from_this(), req = std::move(req), send = std::forward<Send>(send), decoded_target = std::move(decoded_target)]() mutable {
                 try {
-                    // Проверяем макросом assert, что мы действительно выполняемся внутри нашего защищенного strand
                     assert(self->api_strand_.running_in_this_thread());
-                    
                     StringResponse response;
                     
                     if (decoded_target == MAPS_ENDPOINT) {
@@ -126,7 +120,6 @@ public:
 
             return boost::asio::dispatch(api_strand_, std::move(handle));
         } 
-        
         else {
             StringResponse response;
             if (static_dir_.empty()) {
@@ -144,7 +137,6 @@ public:
     }
 
 private:
-
     model::Game& game_;
     std::string static_dir_;
     Strand api_strand_;
@@ -167,7 +159,6 @@ private:
         return response;
     }
 
-    // Статические ответы (text/plain)
     StringResponse MakeStaticBadRequestResponse(unsigned version, bool keep_alive) {
         StringResponse response(http::status::bad_request, version);
         response.set(http::field::content_type, "text/plain");
@@ -300,9 +291,6 @@ private:
         }
         return arr;
     }
-
-    model::Game& game_;
-    std::string static_dir_;
 };
 
 }  // namespace http_handler
