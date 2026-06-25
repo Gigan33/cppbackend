@@ -37,26 +37,58 @@ int main(int argc, const char* argv[]) {
         std::cerr << "Usage: game_server <game-config-json> <static-dir>"sv << std::endl;
         return EXIT_FAILURE;
     }
+    
     try {
+        // Инициализируем логер Практикума
+        Logger::GetInstance().Init();
+
+        // Читаем аргументы командной строки
+        const std::filesystem::path config_path = argv[1];
+        const std::filesystem::path static_dir = argv[2];
+
+        // 1. Загружаем модель игры из JSON
+        model::Game game = json_loader::LoadGame(config_path);
+
+        // 2. Создаем необходимый io_context
+        net::io_context ioc;
+
+        // 3. Добавляем асинхронное отслеживание сигналов остановки (SIGINT, SIGTERM)
+        net::signal_set signals(ioc, SIGINT, SIGTERM);
+        signals.async_wait([&ioc](const boost::system::error_code& ec, int signal_number) {
+            if (!ec) {
+                ioc.stop();
+            }
+        });
+
         const auto address = net::ip::make_address("0.0.0.0");
         constexpr unsigned short port = 8080;
         
-        // 1. Создаем strand для API
+        // 4. Создаем strand для API (теперь ioc объявлен выше и доступен!)
         auto api_strand = net::make_strand(ioc);
         
-        // 2. Создаем RequestHandler в куче через shared_ptr и передаем strand
-        auto handler = std::make_shared<http_handler::RequestHandler>(game, static_dir, api_strand);
+        // 5. Создаем RequestHandler (теперь game и static_dir тоже существуют!)
+        auto handler = std::make_shared<http_handler::RequestHandler>(game, static_dir.string(), api_strand);
         
-        // 3. Передаем разыменованный handler (объект, а не указатель) в декоратор логирования
-        //    Если твой LoggingHandler принимает ссылку, то оборачиваем лямбду вокруг shared_ptr
+        // 6. Оборачиваем в декоратор логирования
         http_handler::LoggingHandler<http_handler::RequestHandler> logging_handler(*handler);
         
-        // 4. В ServeHttp передаем лямбду, которая вызывает наш logging_handler
+        // 7. Запускаем HTTP-сервер
         http_server::ServeHttp(ioc, {address, port}, [&logging_handler](auto&& req, auto&& send) {
             logging_handler(std::forward<decltype(req)>(req), std::forward<decltype(send)>(send));
         });
 
+        // Логируем успешный старт сервера
         json::object start_data;
+        start_data["port"] = port;
+        start_data["address"] = address.to_string();
+        Logger::GetInstance().LogJson("server started", start_data);
+
+        // 8. Запускаем пул потоков (например, 2-4 потока для асинхронности)
+        const unsigned num_threads = std::thread::hardware_concurrency();
+        RunWorkers(num_threads, [&ioc] {
+            ioc.run();
+        });
+
     } catch (const std::exception& ex) {
         json::object data;
         data["code"] = EXIT_FAILURE;
