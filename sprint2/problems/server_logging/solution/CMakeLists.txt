@@ -17,6 +17,7 @@ add_executable(game_server
     src/main.cpp
     src/json_loader.cpp
     src/model.cpp
+    src/logger.cpp
 )
 
 target_link_libraries(game_server 
