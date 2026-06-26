@@ -362,14 +362,7 @@ public:
         return default_dog_speed_;
     }
 
-    void AddMap(Map map) {
-        if (map.GetDogSpeed() == 0.0) {
-            map.SetDogSpeed(default_dog_speed_);
-        }
-        maps_.emplace_back(std::move(map));
-        auto& inserted_map = maps_.back();
-        map_id_to_index_[inserted_map.GetId()] = maps_.size() - 1;
-    }
+    void AddMap(Map map);
 
     const Maps& GetMaps() const noexcept {
         return maps_;
