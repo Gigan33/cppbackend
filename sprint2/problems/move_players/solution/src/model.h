@@ -285,7 +285,7 @@ public:
     uint32_t GetId() const noexcept { return id_; }
     const std::string& GetName() const noexcept { return dog_->GetName(); }
     std::shared_ptr<GameSession> GetSession() const noexcept { return session_; }
-    const Dog& GetDog() const noexcept { return *dog_; } // Этот метод нужен для RequestHandler!
+    Dog& GetDog() const noexcept { return *dog_; }
 
 private:
     uint32_t id_;
@@ -354,7 +354,7 @@ public:
     Game(Game&& other) noexcept = default;
     Game& operator=(Game&& other) noexcept = default;
 
-    oid SetDefaultDogSpeed(double speed) noexcept {
+    void SetDefaultDogSpeed(double speed) noexcept {
         default_dog_speed_ = speed;
     }
 
