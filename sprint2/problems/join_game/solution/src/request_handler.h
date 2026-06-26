@@ -7,6 +7,7 @@
 #include <sstream>
 #include <cctype>
 #include <algorithm>
+#include <cassert>
 
 namespace fs = std::filesystem;
 
@@ -128,7 +129,6 @@ public:
         else {
             StringResponse response;
             if (static_dir_.empty()) {
-                // Если нет статики, давай отдавать no_cache ошибку
                 response = MakeStaticBadRequestResponse(req.version(), req.keep_alive());
             } else {
                 std::string relative_path = decoded_target;
@@ -147,7 +147,6 @@ private:
     std::string static_dir_;
     Strand api_strand_;
 
-    // Метод обработки POST-запроса на вход в игру
     template <typename Body, typename Allocator>
     StringResponse HandleJoinGame(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive) {
         if (req.method() != http::verb::post) {
@@ -175,17 +174,14 @@ private:
             std::string user_name = json::value_to<std::string>(obj.at("userName"));
             std::string map_id = json::value_to<std::string>(obj.at("mapId"));
 
-            // Проверка на пустое имя
             auto trimmed_name = user_name;
             trimmed_name.erase(std::remove_if(trimmed_name.begin(), trimmed_name.end(), ::isspace), trimmed_name.end());
             if (user_name.empty() || trimmed_name.empty()) {
                 return MakeJoinErrorResponse(http::status::bad_request, "invalidArgument", "Invalid name", version, keep_alive);
             }
 
-            // Пытаемся зайти в модель игры
             auto [token, player_id] = game_.JoinGame(map_id, user_name);
 
-            // Собираем успешный ответ
             StringResponse response(http::status::ok, version);
             response.set(http::field::content_type, "application/json");
             response.set(http::field::cache_control, "no-cache");
@@ -212,7 +208,6 @@ private:
 
     template <typename Body, typename Allocator>
     StringResponse HandleGetPlayers(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive) {
-        // 1. Проверяем метод: разрешены только GET и HEAD
         if (req.method() != http::verb::get && req.method() != http::verb::head) {
             StringResponse response(http::status::method_not_allowed, version);
             response.set(http::field::content_type, "application/json");
@@ -224,7 +219,6 @@ private:
             return response;
         }
 
-        // 2. Проверяем и парсим заголовок Authorization
         auto auth_it = req.find(http::field::authorization);
         if (auth_it == req.end()) {
             return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Authorization header is required", version, keep_alive);
@@ -237,21 +231,18 @@ private:
         }
 
         std::string token_str(auth_header.substr(bearer_prefix.size()));
-        // Убираем пробелы, если есть
         token_str.erase(std::remove_if(token_str.begin(), token_str.end(), ::isspace), token_str.end());
 
         if (token_str.empty() || token_str.size() != 32) {
             return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
         }
 
-        // 3. Ищем игрока по токену
         model::Token token{token_str};
         auto player = game_.FindPlayerByToken(token);
         if (!player) {
             return MakeJoinErrorResponse(http::status::unauthorized, "unknownToken", "Player token not found", version, keep_alive);
         }
 
-        // 4. Формируем список игроков из ТЕКУЩЕЙ сессии этого игрока
         json::object root_obj;
         auto current_session = player->GetSession();
 
@@ -263,7 +254,6 @@ private:
             }
         }
 
-        // 5. Собираем ответ
         StringResponse response(http::status::ok, version);
         response.set(http::field::content_type, "application/json");
         response.set(http::field::cache_control, "no-cache");
@@ -275,12 +265,12 @@ private:
             response.body() = "";
         }
         
-        response.content_length(json_str.size());
+        // КРИТИЧЕСКИЙ ФИКС: content_length берется строго от финального body
+        response.content_length(response.body().size());
         response.keep_alive(keep_alive);
         return response;
     }
 
-    // Хелпер для генерации JSON-ошибок с Cache-Control: no-cache
     StringResponse MakeJoinErrorResponse(http::status status, std::string_view code, std::string_view message, unsigned version, bool keep_alive) {
         StringResponse response(status, version);
         response.set(http::field::content_type, "application/json");
