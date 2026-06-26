@@ -87,6 +87,10 @@ public:
     Point GetEnd() const noexcept {
         return end_;
     }
+
+private:
+    Point start_;
+    Point end_;
 };
 
 class Building {
