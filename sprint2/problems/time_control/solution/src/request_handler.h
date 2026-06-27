@@ -87,6 +87,25 @@ public:
     RequestHandler(const RequestHandler&) = delete;
     RequestHandler& operator=(const RequestHandler&) = delete;
 
+    // Вспомогательный метод для ручных ответов
+    StringResponse MakeStringResponse(http::status status, std::string_view body, unsigned version, bool keep_alive,
+                                      std::string_view content_type = "application/json",
+                                      const std::vector<std::pair<std::string, std::string>>& custom_headers = {},
+                                      std::string_view cache_control = "") {
+        StringResponse response(status, version);
+        response.set(http::field::content_type, content_type);
+        if (!cache_control.empty()) {
+            response.set(http::field::cache_control, cache_control);
+        }
+        for (const auto& [header, value] : custom_headers) {
+            response.set(header, value);
+        }
+        response.body() = std::string(body);
+        response.content_length(response.body().size());
+        response.keep_alive(keep_alive);
+        return response;
+    }
+
     StringResponse MakeMapsListResponse(unsigned version, bool keep_alive);
     StringResponse MakeApiBadRequestResponse(unsigned version, bool keep_alive);
     StringResponse MakeMapResponse(const std::string& map_id, unsigned version, bool keep_alive);
@@ -106,6 +125,7 @@ public:
     template <typename Body, typename Allocator>
     StringResponse HandleTickRequest(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive);
 
+    // Главный распределитель запросов
     template <typename Body, typename Allocator, typename Send>
     void operator()(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send) {
         std::string target(req.target());
@@ -132,7 +152,6 @@ public:
                         response = HandleGetGameState(req, req.version(), req.keep_alive());
                     } else if (decoded_target == ACTION_ENDPOINT) {
                         response = HandlePlayerAction(req, req.version(), req.keep_alive());
-                    // ВСТАВЛЯЕМ СЮДА: обработка тика времени
                     } else if (decoded_target == TICK_ENDPOINT) {
                         response = HandleTickRequest(req, req.version(), req.keep_alive());
                     } else if (decoded_target.rfind(MAPS_PREFIX.data(), 0) == 0) {
@@ -154,9 +173,8 @@ public:
             };
 
             return boost::asio::dispatch(api_strand_, std::move(handle));
-    }
         } 
-        else {
+        else { // Теперь else находится строго на своем уровне
             StringResponse response;
             if (static_dir_.empty()) {
                 response = MakeStaticBadRequestResponse(req.version(), req.keep_alive());
@@ -177,7 +195,6 @@ private:
     std::string static_dir_;
     Strand api_strand_;
 
-    // Универсальный шаблонный метод авторизации по токену
     template <typename Body, typename Allocator, typename Fn>
     StringResponse ExecuteAuthorized(const http::request<Body, http::basic_fields<Allocator>>& req, 
                                      unsigned version, bool keep_alive, Fn&& action) {
@@ -350,10 +367,7 @@ private:
     template <typename Body, typename Allocator>
     StringResponse HandleTickRequest(const http::request<Body, http::basic_fields<Allocator>>& req, 
                                     unsigned version, bool keep_alive) {
-        // 1. Проверяем метод (по ТЗ строго POST)
         if (req.method() != http::verb::post) {
-            // Если у тебя есть специальный хелпер для Method Not Allowed, можно использовать его.
-            // Главное передать заголовок Allow: POST и Cache-Control: no-cache
             json::object error_obj;
             error_obj["code"] = "invalidArgument";
             error_obj["message"] = "Invalid method";
@@ -366,7 +380,6 @@ private:
         }
 
         try {
-            // 2. Разбираем JSON из req.body()
             auto json_doc = json::parse(req.body());
             if (!json_doc.is_object()) {
                 throw std::invalid_argument("Not an object");
@@ -377,7 +390,6 @@ private:
                 throw std::invalid_argument("Missing timeDelta");
             }
 
-            // Поддерживаем чтение дельты времени как целого числа
             double delta_ms = 0.0;
             if (obj.at("timeDelta").is_int64()) {
                 delta_ms = static_cast<double>(obj.at("timeDelta").as_int64());
@@ -385,13 +397,9 @@ private:
                 throw std::invalid_argument("Invalid timeDelta type");
             }
 
-            // Переводим миллисекунды в секунды для нашей физической модели
             double dt = delta_ms / 1000.0;
-            
-            // Продвигаем время в игре
             game_.Tick(dt);
 
-            // 3. Возвращаем успешный ответ {} по ТЗ
             return MakeStringResponse(http::status::ok, 
                                     "{}", 
                                     version, keep_alive, 
@@ -400,7 +408,6 @@ private:
                                     "no-cache");
 
         } catch (const std::exception& e) {
-            // Формируем ошибку 400 Bad Request при кривом JSON или невалидном аргументе
             json::object error_obj;
             error_obj["code"] = "invalidArgument";
             error_obj["message"] = "Failed to parse tick request JSON";
@@ -414,7 +421,6 @@ private:
         }
     }
 
-    // Помощник для генерации стандартных ответов JSON
     StringResponse MakeJsonResponse(http::status status, const json::object& json_body, bool send_body, unsigned version, bool keep_alive) {
         StringResponse response(status, version);
         response.set(http::field::content_type, "application/json");
@@ -429,7 +435,6 @@ private:
         return response;
     }
 
-    // Помощник для ошибок 405 Method Not Allowed
     StringResponse MakeMethodNotAllowedResponse(std::string_view allow_methods, unsigned version, bool keep_alive, std::string_view msg = "Invalid method") {
         StringResponse response(http::status::method_not_allowed, version);
         response.set(http::field::content_type, "application/json");
