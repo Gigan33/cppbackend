@@ -304,7 +304,7 @@ public:
                                     unsigned version, bool keep_alive) {
         if (req.method() != http::verb::post) {
             json::object error_obj;
-            error_obj["code"] = "invalidArgument";
+            error_obj["code"] = "invalidMethod";  // <-- Исправили код ошибки
             error_obj["message"] = "Invalid method";
             return MakeStringResponse(http::status::method_not_allowed, 
                                     json::serialize(error_obj), 
