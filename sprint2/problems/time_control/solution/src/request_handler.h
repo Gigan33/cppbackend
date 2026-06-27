@@ -106,123 +106,58 @@ public:
         return response;
     }
 
-    StringResponse MakeMapsListResponse(unsigned version, bool keep_alive);
-    StringResponse MakeApiBadRequestResponse(unsigned version, bool keep_alive);
-    StringResponse MakeMapResponse(const std::string& map_id, unsigned version, bool keep_alive);
+    // --- ОПРЕДЕЛЕНИЯ МЕТОДОВ ОБРАБОТКИ ЗАПРОСОВ (ТЕПЕРЬ СРАЗУ ТУТ) ---
 
-    template <typename Body, typename Allocator>
-    StringResponse HandleJoinGame(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive);
-
-    template <typename Body, typename Allocator>
-    StringResponse HandleGetPlayers(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive);
-
-    template <typename Body, typename Allocator>
-    StringResponse HandleGetGameState(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive);
-
-    template <typename Body, typename Allocator>
-    StringResponse HandlePlayerAction(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive);
-
-    template <typename Body, typename Allocator>
-    StringResponse HandleTickRequest(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive);
-
-    // Главный распределитель запросов
-    template <typename Body, typename Allocator, typename Send>
-    void operator()(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send) {
-        std::string target(req.target());
-        std::string decoded_target = UrlDecode(target);
+    StringResponse MakeMapsListResponse(unsigned version, bool keep_alive) {
+        StringResponse response(http::status::ok, version);
+        response.set(http::field::content_type, "application/json");
+        response.set(http::field::cache_control, "no-cache");
         
-        if (decoded_target.rfind(API_PREFIX.data(), 0) == 0) {
-            auto handle = [this, req = std::move(req), send = std::forward<Send>(send), decoded_target = std::move(decoded_target)]() mutable {    
-                try {
-                    assert(api_strand_.running_in_this_thread());
-                    
-                    StringResponse response;
-                    
-                    if (decoded_target == MAPS_ENDPOINT) {
-                        if (req.method() == http::verb::get) {
-                            response = MakeMapsListResponse(req.version(), req.keep_alive());
-                        } else {
-                            response = MakeApiBadRequestResponse(req.version(), req.keep_alive());
-                        }
-                    } else if (decoded_target == JOIN_GAME_ENDPOINT) {
-                        response = HandleJoinGame(req, req.version(), req.keep_alive());
-                    } else if (decoded_target == PLAYERS_ENDPOINT) {
-                        response = HandleGetPlayers(req, req.version(), req.keep_alive());
-                    } else if (decoded_target == GAME_STATE_ENDPOINT) {
-                        response = HandleGetGameState(req, req.version(), req.keep_alive());
-                    } else if (decoded_target == ACTION_ENDPOINT) {
-                        response = HandlePlayerAction(req, req.version(), req.keep_alive());
-                    } else if (decoded_target == TICK_ENDPOINT) {
-                        response = HandleTickRequest(req, req.version(), req.keep_alive());
-                    } else if (decoded_target.rfind(MAPS_PREFIX.data(), 0) == 0) {
-                        if (req.method() == http::verb::get) {
-                            std::string map_id = decoded_target.substr(MAPS_PREFIX.size());
-                            response = MakeMapResponse(map_id, req.version(), req.keep_alive());
-                        } else {
-                            response = MakeApiBadRequestResponse(req.version(), req.keep_alive());
-                        }
-                    } else {
-                        response = MakeApiBadRequestResponse(req.version(), req.keep_alive());
-                    }
-
-                    send(std::move(response));
-                    
-                } catch (...) {
-                    send(MakeApiBadRequestResponse(req.version(), req.keep_alive()));
-                }
-            };
-
-            return boost::asio::dispatch(api_strand_, std::move(handle));
-        } 
-        else { // Теперь else находится строго на своем уровне
-            StringResponse response;
-            if (static_dir_.empty()) {
-                response = MakeStaticBadRequestResponse(req.version(), req.keep_alive());
-            } else {
-                std::string relative_path = decoded_target;
-                if (!relative_path.empty() && relative_path[0] == '/') {
-                    relative_path.erase(0, 1);
-                }
-                fs::path full_path = fs::path(static_dir_) / relative_path;
-                response = MakeFileResponse(full_path, req.version(), req.keep_alive());
-            }
-            send(std::move(response));
+        json::array arr;
+        for (const auto& map : game_.GetMaps()) {
+            json::object map_obj;
+            map_obj["id"] = *map.GetId();
+            map_obj["name"] = map.GetName();
+            arr.push_back(map_obj);
         }
+        
+        response.body() = json::serialize(arr);
+        response.content_length(response.body().size());
+        response.keep_alive(keep_alive);
+        return response;
     }
 
-private:
-    model::Game& game_;
-    std::string static_dir_;
-    Strand api_strand_;
+    StringResponse MakeApiBadRequestResponse(unsigned version, bool keep_alive) {
+        StringResponse response(http::status::bad_request, version);
+        response.set(http::field::content_type, "application/json");
+        response.set(http::field::cache_control, "no-cache");
+        response.body() = "{\"code\":\"badRequest\",\"message\":\"Bad request\"}";
+        response.content_length(response.body().size());
+        response.keep_alive(keep_alive);
+        return response;
+    }
 
-    template <typename Body, typename Allocator, typename Fn>
-    StringResponse ExecuteAuthorized(const http::request<Body, http::basic_fields<Allocator>>& req, 
-                                     unsigned version, bool keep_alive, Fn&& action) {
-        auto auth_it = req.find(http::field::authorization);
-        if (auth_it == req.end()) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Authorization header is required", version, keep_alive);
+    StringResponse MakeMapResponse(const std::string& map_id, unsigned version, bool keep_alive) {
+        const model::Map* map = game_.FindMap(model::Map::Id{map_id});
+        if (!map) {
+            return MakeApiNotFoundResponse(version, keep_alive);
         }
-
-        std::string_view auth_header = auth_it->value();
-        std::string_view bearer_prefix = "Bearer ";
-        if (auth_header.rfind(bearer_prefix, 0) != 0) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
-        }
-
-        std::string token_str(auth_header.substr(bearer_prefix.size()));
-        token_str.erase(std::remove_if(token_str.begin(), token_str.end(), ::isspace), token_str.end());
-
-        if (token_str.empty() || token_str.size() != 32) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
-        }
-
-        model::Token token{token_str};
-        auto player = game_.FindPlayerByToken(token);
-        if (!player) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "unknownToken", "Player token has not been found", version, keep_alive);
-        }
-
-        return action(player);
+        
+        StringResponse response(http::status::ok, version);
+        response.set(http::field::content_type, "application/json");
+        response.set(http::field::cache_control, "no-cache");
+        
+        json::object result;
+        result["id"] = *map->GetId();
+        result["name"] = map->GetName();
+        result["roads"] = SerializeRoads(map);
+        result["buildings"] = SerializeBuildings(map);
+        result["offices"] = SerializeOffices(map);
+        
+        response.body() = json::serialize(result);
+        response.content_length(response.body().size());
+        response.keep_alive(keep_alive);
+        return response;
     }
 
     template <typename Body, typename Allocator>
@@ -421,6 +356,106 @@ private:
         }
     }
 
+    // Главный распределитель запросов
+    template <typename Body, typename Allocator, typename Send>
+    void operator()(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send) {
+        std::string target(req.target());
+        std::string decoded_target = UrlDecode(target);
+        
+        if (decoded_target.rfind(API_PREFIX.data(), 0) == 0) {
+            auto handle = [this, req = std::move(req), send = std::forward<Send>(send), decoded_target = std::move(decoded_target)]() mutable {    
+                try {
+                    assert(api_strand_.running_in_this_thread());
+                    
+                    StringResponse response;
+                    
+                    if (decoded_target == MAPS_ENDPOINT) {
+                        if (req.method() == http::verb::get) {
+                            response = MakeMapsListResponse(req.version(), req.keep_alive());
+                        } else {
+                            response = MakeApiBadRequestResponse(req.version(), req.keep_alive());
+                        }
+                    } else if (decoded_target == JOIN_GAME_ENDPOINT) {
+                        response = HandleJoinGame(req, req.version(), req.keep_alive());
+                    } else if (decoded_target == PLAYERS_ENDPOINT) {
+                        response = HandleGetPlayers(req, req.version(), req.keep_alive());
+                    } else if (decoded_target == GAME_STATE_ENDPOINT) {
+                        response = HandleGetGameState(req, req.version(), req.keep_alive());
+                    } else if (decoded_target == ACTION_ENDPOINT) {
+                        response = HandlePlayerAction(req, req.version(), req.keep_alive());
+                    } else if (decoded_target == TICK_ENDPOINT) {
+                        response = HandleTickRequest(req, req.version(), req.keep_alive());
+                    } else if (decoded_target.rfind(MAPS_PREFIX.data(), 0) == 0) {
+                        if (req.method() == http::verb::get) {
+                            std::string map_id = decoded_target.substr(MAPS_PREFIX.size());
+                            response = MakeMapResponse(map_id, req.version(), req.keep_alive());
+                        } else {
+                            response = MakeApiBadRequestResponse(req.version(), req.keep_alive());
+                        }
+                    } else {
+                        response = MakeApiBadRequestResponse(req.version(), req.keep_alive());
+                    }
+
+                    send(std::move(response));
+                    
+                } catch (...) {
+                    send(MakeApiBadRequestResponse(req.version(), req.keep_alive()));
+                }
+            };
+
+            return boost::asio::dispatch(api_strand_, std::move(handle));
+        } 
+        else {
+            StringResponse response;
+            if (static_dir_.empty()) {
+                response = MakeStaticBadRequestResponse(req.version(), req.keep_alive());
+            } else {
+                std::string relative_path = decoded_target;
+                if (!relative_path.empty() && relative_path[0] == '/') {
+                    relative_path.erase(0, 1);
+                }
+                fs::path full_path = fs::path(static_dir_) / relative_path;
+                response = MakeFileResponse(full_path, req.version(), req.keep_alive());
+            }
+            send(std::move(response));
+        }
+    }
+
+private:
+    model::Game& game_;
+    std::string static_dir_;
+    Strand api_strand_;
+
+    template <typename Body, typename Allocator, typename Fn>
+    StringResponse ExecuteAuthorized(const http::request<Body, http::basic_fields<Allocator>>& req, 
+                                     unsigned version, bool keep_alive, Fn&& action) {
+        auto auth_it = req.find(http::field::authorization);
+        if (auth_it == req.end()) {
+            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Authorization header is required", version, keep_alive);
+        }
+
+        std::string_view auth_header = auth_it->value();
+        std::string_view bearer_prefix = "Bearer ";
+        if (auth_header.rfind(bearer_prefix, 0) != 0) {
+            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
+        }
+
+        std::string token_str(auth_header.substr(bearer_prefix.size()));
+        token_str.erase(std::remove_if(token_str.begin(), token_str.end(), ::isspace), token_str.end());
+
+        if (token_str.empty() || token_str.size() != 32) {
+            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
+        }
+
+        model::Token token{token_str};
+        auto player = game_.FindPlayerByToken(token);
+        if (!player) {
+            return MakeJoinErrorResponse(http::status::unauthorized, "unknownToken", "Player token has not been found", version, keep_alive);
+        }
+
+        return action(player);
+    }
+
     StringResponse MakeJsonResponse(http::status status, const json::object& json_body, bool send_body, unsigned version, bool keep_alive) {
         StringResponse response(status, version);
         response.set(http::field::content_type, "application/json");
@@ -461,16 +496,6 @@ private:
         err_obj["message"] = message.data();
         
         response.body() = json::serialize(err_obj);
-        response.content_length(response.body().size());
-        response.keep_alive(keep_alive);
-        return response;
-    }
-
-    StringResponse MakeApiBadRequestResponse(unsigned version, bool keep_alive) {
-        StringResponse response(http::status::bad_request, version);
-        response.set(http::field::content_type, "application/json");
-        response.set(http::field::cache_control, "no-cache");
-        response.body() = "{\"code\":\"badRequest\",\"message\":\"Bad request\"}";
         response.content_length(response.body().size());
         response.keep_alive(keep_alive);
         return response;
@@ -528,48 +553,6 @@ private:
         response.content_length(response.body().size());
         response.keep_alive(keep_alive);
         
-        return response;
-    }
-
-    StringResponse MakeMapsListResponse(unsigned version, bool keep_alive) {
-        StringResponse response(http::status::ok, version);
-        response.set(http::field::content_type, "application/json");
-        response.set(http::field::cache_control, "no-cache");
-        
-        json::array arr;
-        for (const auto& map : game_.GetMaps()) {
-            json::object map_obj;
-            map_obj["id"] = *map.GetId();
-            map_obj["name"] = map.GetName();
-            arr.push_back(map_obj);
-        }
-        
-        response.body() = json::serialize(arr);
-        response.content_length(response.body().size());
-        response.keep_alive(keep_alive);
-        return response;
-    }
-
-    StringResponse MakeMapResponse(const std::string& map_id, unsigned version, bool keep_alive) {
-        const model::Map* map = game_.FindMap(model::Map::Id{map_id});
-        if (!map) {
-            return MakeApiNotFoundResponse(version, keep_alive);
-        }
-        
-        StringResponse response(http::status::ok, version);
-        response.set(http::field::content_type, "application/json");
-        response.set(http::field::cache_control, "no-cache");
-        
-        json::object result;
-        result["id"] = *map->GetId();
-        result["name"] = map->GetName();
-        result["roads"] = SerializeRoads(map);
-        result["buildings"] = SerializeBuildings(map);
-        result["offices"] = SerializeOffices(map);
-        
-        response.body() = json::serialize(result);
-        response.content_length(response.body().size());
-        response.keep_alive(keep_alive);
         return response;
     }
 
