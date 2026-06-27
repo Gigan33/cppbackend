@@ -87,6 +87,25 @@ public:
     RequestHandler(const RequestHandler&) = delete;
     RequestHandler& operator=(const RequestHandler&) = delete;
 
+    StringResponse MakeMapsListResponse(unsigned version, bool keep_alive);
+    StringResponse MakeApiBadRequestResponse(unsigned version, bool keep_alive);
+    StringResponse MakeMapResponse(const std::string& map_id, unsigned version, bool keep_alive);
+
+    template <typename Body, typename Allocator>
+    StringResponse HandleJoinGame(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive);
+
+    template <typename Body, typename Allocator>
+    StringResponse HandleGetPlayers(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive);
+
+    template <typename Body, typename Allocator>
+    StringResponse HandleGetGameState(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive);
+
+    template <typename Body, typename Allocator>
+    StringResponse HandlePlayerAction(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive);
+
+    template <typename Body, typename Allocator>
+    StringResponse HandleTickRequest(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive);
+
     template <typename Body, typename Allocator, typename Send>
     void operator()(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send) {
         std::string target(req.target());
