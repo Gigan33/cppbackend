@@ -50,7 +50,7 @@ void Dog::UpdatePosition(double dt, const Map* map) {
     // 3. Проверяем, останется ли собака на одной из текущих дорог в следующей точке
     bool remains_on_road = false;
     for (const auto* road : current_roads) {
-        if (IsPointOnRoad(next_pos, road)) {
+        if (IsPointOnRoad(next_pos, *road)) {
             remains_on_road = true;
             break;
         }
@@ -117,7 +117,7 @@ void Dog::UpdatePosition(double dt, const Map* map) {
 
 // Не забудь сохранить существующую реализацию метода AddOffice, если она была:
 void Map::AddOffice(Office office) {
-    if (warehouse_id_to_index_.contains(office.GetId())) {
+    if (warehouse_id_to_index_.count(office.GetId())) {
         throw std::invalid_argument("Duplicate warehouse id");
     }
     const size_t index = offices_.size();
