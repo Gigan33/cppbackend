@@ -7,15 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_compile_definitions(BOOST_BEAST_USE_STD_STRING_VIEW)
 
-# --- НАДЁЖНЫЙ БЛОК ПОДКЛЮЧЕНИЯ CONAN ---
-if(EXISTS ${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-    include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-else()
-    include(${CMAKE_CURRENT_BINARY_DIR}/conanbuildinfo.cmake)
-endif()
-
-conan_basic_setup()
-# ---------------------------------------
+# Подключаем стандартный Конан, который генерируется внутри Docker Практикума
+include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
+conan_basic_setup(TARGETS)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
