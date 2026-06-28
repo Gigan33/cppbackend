@@ -9,7 +9,11 @@ conan_basic_setup(TARGETS)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-add_executable(merge src/merge.cpp)
+add_executable(game_server 
+    src/main.cpp
+    src/json_loader.cpp
+    src/model.cpp
+)
 
 target_include_directories(merge PRIVATE CONAN_PKG::boost)
 target_link_libraries(merge PRIVATE CONAN_PKG::boost Threads::Threads)
