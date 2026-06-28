@@ -2,12 +2,13 @@ cmake_minimum_required(VERSION 3.11)
 
 project(game_server CXX)
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_compile_definitions(BOOST_BEAST_USE_STD_STRING_VIEW)
 
-# Подключаем именно conanbuildinfo_multi.cmake, который генерируется в контейнере!
 include(${CMAKE_BINARY_DIR}/conanbuildinfo_multi.cmake)
 conan_basic_setup(TARGETS)
 
