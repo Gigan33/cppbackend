@@ -113,7 +113,7 @@ int main(int argc, char* argv[]) {
 
         bool auto_tick_enabled = args->tick_period.has_value();
         auto handler = std::make_shared<http_handler::RequestHandler>(
-            game, args->www_root, api_strand, auto_tick_enabled
+            game, args->www_root, *api_strand, auto_tick_enabled
         );
 
         http_handler::LoggingHandler<http_handler::RequestHandler> logging_handler(*handler);
