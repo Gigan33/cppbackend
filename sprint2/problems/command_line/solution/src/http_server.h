@@ -1,7 +1,5 @@
 #pragma once
 #include "sdk.h"
-
-
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/beast/core.hpp>
@@ -17,24 +15,20 @@ using tcp = net::ip::tcp;
 namespace beast = boost::beast;
 namespace http = beast::http;
 
-inline void ReportError(beast::error_code ec, std::string_view what) {
-    std::cerr << what << ": " << ec.message() << std::endl;
-}
+void ReportError(beast::error_code ec, std::string_view what);
 
 class SessionBase {
 public:
     SessionBase(const SessionBase&) = delete;
     SessionBase& operator=(const SessionBase&) = delete;
+
     void Run();
 
 protected:
     explicit SessionBase(tcp::socket&& socket) : stream_(std::move(socket)) {}
     ~SessionBase() = default;
 
-    void Close() {
-        beast::error_code ec;
-        stream_.socket().shutdown(tcp::socket::shutdown_send, ec);
-    }
+    void Close();
 
     template <typename Body, typename Fields>
     void Write(http::response<Body, Fields>&& response) {
@@ -58,38 +52,6 @@ private:
     beast::flat_buffer buffer_;
     http::request<http::string_body> request_;
 };
-
-inline void SessionBase::Run() {
-    net::dispatch(stream_.get_executor(),
-                  beast::bind_front_handler(&SessionBase::Read, GetSharedThis()));
-}
-
-inline void SessionBase::Read() {
-    request_ = {};
-    stream_.expires_after(std::chrono::seconds(30));
-    http::async_read(stream_, buffer_, request_,
-                     beast::bind_front_handler(&SessionBase::OnRead, GetSharedThis()));
-}
-
-inline void SessionBase::OnRead(beast::error_code ec, std::size_t) {
-    if (ec == http::error::end_of_stream) {
-        return Close();
-    }
-    if (ec) {
-        return ReportError(ec, "read");
-    }
-    HandleRequest(std::move(request_));
-}
-
-inline void SessionBase::OnWrite(bool close, beast::error_code ec, std::size_t) {
-    if (ec) {
-        return ReportError(ec, "write");
-    }
-    if (close) {
-        return Close();
-    }
-    Read();
-}
 
 template <typename RequestHandler>
 class Session : public SessionBase, public std::enable_shared_from_this<Session<RequestHandler>> {

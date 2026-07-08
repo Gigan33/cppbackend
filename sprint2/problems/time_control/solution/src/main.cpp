@@ -1,101 +1,50 @@
-#include "sdk.h"
-#include "json_loader.h"
-#include "request_handler.h"
-#include "http_server.h"
-#include "logger.h"
-#include "logging_handler.h"
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/signal_set.hpp>
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/strand.hpp>
+#include <boost/program_options.hpp>
+#include <optional>
 #include <iostream>
-#include <thread>
-#include <vector>
-#include <memory>
 
-using namespace std::literals;
-namespace net = boost::asio;
+struct Args {
+    std::optional<uint64_t> tick_period; // Период в мс (опциональный)
+    std::string config_file;             // Путь к конфигу
+    std::string www_root;                // Путь к статике
+    bool randomize_spawn_points = false; // Случайный спавн
+};
 
-namespace {
+[[nodiscard]] std::optional<Args> ParseCommandLine(int argc, const char* const argv[]) {
+    namespace po = boost::program_options;
+    using namespace std::literals;
 
-template <typename Fn>
-void RunWorkers(unsigned n, const Fn& fn) {
-    n = std::max(1u, n);
-    std::vector<std::thread> workers;
-    workers.reserve(n - 1);
-    while (--n) {
-        workers.emplace_back(fn);
+    po::options_description desc{"Allowed options"s};
+
+    Args args;
+    // Описываем параметры строго по заданию
+    desc.add_options()
+        ("help,h", "produce help message")
+        ("tick-period,t", po::value<uint64_t>()->value_name("milliseconds"s), "set tick period")
+        ("config-file,c", po::value<std::string>(&args.config_file)->value_name("file"s), "set config file path")
+        ("www-root,w", po::value<std::string>(&args.www_root)->value_name("dir"s), "set static files root")
+        ("randomize-spawn-points", po::bool_switch(&args.randomize_spawn_points), "spawn dogs at random positions");
+
+    po::variables_map vm;
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);
+
+    if (vm.count("help"s)) {
+        std::cout << desc << std::endl;
+        return std::nullopt;
     }
-    fn();
-    for (auto& w : workers) {
-        if (w.joinable()) w.join();
+
+    // Проверяем обязательные параметры
+    if (!vm.count("config-file"s)) {
+        throw std::runtime_error("Config file path is not specified"s);
     }
-}
-
-}  // namespace
-
-int main(int argc, const char* argv[]) {
-    if (argc != 3) {
-        std::cerr << "Usage: game_server <game-config-json> <static-dir>"sv << std::endl;
-        return EXIT_FAILURE;
+    if (!vm.count("www-root"s)) {
+        throw std::runtime_error("Static files root is not specified"s);
     }
-    
-    try {
-        // 1. Инициализируем нативный Boost.Log форматтер
-        Logger::Init();
-        
-        // 2. Загружаем модель игры и статику из аргументов командной строки
-        model::Game game = json_loader::LoadGame(argv[1]);
-        std::string static_dir = argv[2];
 
-        // 3. Настраиваем многопоточный io_context
-        const unsigned num_threads = std::thread::hardware_concurrency();
-        net::io_context ioc(num_threads);
-
-        // 4. Настраиваем асинхронный перехват сигналов остановки
-        net::signal_set signals(ioc, SIGINT, SIGTERM);
-        signals.async_wait([&ioc](const boost::system::error_code&, int) {
-            boost::json::value exit_data{{"code", 0}};
-            BOOST_LOG_TRIVIAL(info) << boost::log::add_value(additional_data, exit_data)
-                                    << "server exited";
-            ioc.stop();
-        });
-
-        // 5. Сетевые настройки
-        const auto address = net::ip::make_address("0.0.0.0");
-        constexpr unsigned short port = 8080;
-        
-        // 6. Создаем strand для последовательного выполнения API-запросов
-        auto api_strand = net::make_strand(ioc);
-        
-        // 7. Создаем RequestHandler
-        auto handler = std::make_shared<http_handler::RequestHandler>(game, static_dir, api_strand);
-        
-        // 8. Декорируем наш обработчик логированием
-        http_handler::LoggingHandler<http_handler::RequestHandler> logging_handler(*handler);
-        
-        // 9. Запускаем HTTP-сервер
-        http_server::ServeHttp(ioc, {address, port}, [&logging_handler](auto&& req, auto&& send) {
-            logging_handler(std::forward<decltype(req)>(req), std::forward<decltype(send)>(send));
-        });
-
-        // 10. Логируем успешный старт строго через Boost.Log
-        boost::json::value start_data{{"port", port}, {"address", address.to_string()}};
-        BOOST_LOG_TRIVIAL(info) << boost::log::add_value(additional_data, start_data)
-                                << "server started";
-
-        // 11. Запускаем пул потоков для параллельной обработки
-        RunWorkers(std::max(1u, num_threads), [&ioc] {
-            ioc.run();
-        });
-        
-    } catch (const std::exception& ex) {
-        boost::json::value exit_data{{"code", EXIT_FAILURE}, {"exception", ex.what()}};
-        BOOST_LOG_TRIVIAL(info) << boost::log::add_value(additional_data, exit_data)
-                                << "server exited";
-        std::cerr << ex.what() << std::endl;
-        return EXIT_FAILURE;
+    // Записываем tick-period, если он есть
+    if (vm.count("tick-period"s)) {
+        args.tick_period = vm["tick-period"s].as<uint64_t>();
     }
-    
-    return 0;
+
+    return args;
 }

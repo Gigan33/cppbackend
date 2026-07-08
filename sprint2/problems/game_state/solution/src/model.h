@@ -177,6 +177,14 @@ public:
 
     void AddOffice(Office office);
 
+    void SetDogSpeed(double speed) noexcept {
+        dog_speed_ = speed;
+    }
+
+    double GetDogSpeed() const noexcept {
+        return dog_speed_;
+    }
+
 private:
     using OfficeIdToIndex = std::unordered_map<Office::Id, size_t, util::TaggedHasher<Office::Id>>;
 
@@ -187,11 +195,12 @@ private:
 
     OfficeIdToIndex warehouse_id_to_index_;
     Offices offices_;
+
+    double dog_speed_ = 0.0;
 };
 
 class Dog {
 public:
-    // Добавили dog_id, чтобы у собаки был свой идентификатор, если это необходимо
     Dog(std::string name, uint32_t id, PointD position)
         : name_(std::move(name))
         , id_(id)
@@ -212,6 +221,25 @@ public:
             case Direction::EAST:  return "R";
         }
         return "U";
+    }
+
+    void Move(std::string_view action, double speed) {
+        if (action == "L") {
+            speed_ = {-speed, 0.0};
+            direction_ = Direction::WEST;
+        } else if (action == "R") {
+            speed_ = {speed, 0.0};
+            direction_ = Direction::EAST;
+        } else if (action == "U") {
+            speed_ = {0.0, -speed};
+            direction_ = Direction::NORTH;
+        } else if (action == "D") {
+            speed_ = {0.0, speed};
+            direction_ = Direction::SOUTH;
+        } else if (action == "") {
+            speed_ = {0.0, 0.0};
+            // При остановке направление НЕ меняется по ТЗ
+        }
     }
 
 private:
@@ -326,7 +354,22 @@ public:
     Game(Game&& other) noexcept = default;
     Game& operator=(Game&& other) noexcept = default;
 
-    void AddMap(Map map);
+    oid SetDefaultDogSpeed(double speed) noexcept {
+        default_dog_speed_ = speed;
+    }
+
+    double GetDefaultDogSpeed() const noexcept {
+        return default_dog_speed_;
+    }
+
+    void AddMap(Map map) {
+        if (map.GetDogSpeed() == 0.0) {
+            map.SetDogSpeed(default_dog_speed_);
+        }
+        maps_.emplace_back(std::move(map));
+        auto& inserted_map = maps_.back();
+        map_id_to_index_[inserted_map.GetId()] = maps_.size() - 1;
+    }
 
     const Maps& GetMaps() const noexcept {
         return maps_;
@@ -389,6 +432,8 @@ private:
     std::vector<std::shared_ptr<Player>> players_;
     std::unordered_map<Map::Id, std::shared_ptr<GameSession>, util::TaggedHasher<Map::Id>> map_id_to_session_;
     PlayerTokens tokens_;
+
+    double default_dog_speed_ = 1.0;
 };
 
 }  // namespace model

@@ -23,6 +23,14 @@ model::Game LoadGame(const std::filesystem::path& json_path) {
     
     model::Game game;
     
+    // 1. Читаем глобальную скорость по умолчанию (если её нет, то по ТЗ выставляем 1.0)
+    double default_speed = 1.0;
+    if (obj.contains("defaultDogSpeed")) {
+        default_speed = obj.at("defaultDogSpeed").as_double();
+    }
+    game.SetDefaultDogSpeed(default_speed);
+    
+    // 2. Читаем массив карт
     if (obj.contains("maps") && obj["maps"].is_array()) {
         for (const auto& map_json : obj["maps"].as_array()) {
             json::object map_obj = map_json.as_object();
@@ -31,6 +39,14 @@ model::Game LoadGame(const std::filesystem::path& json_path) {
             std::string name = map_obj.at("name").as_string().c_str();
             model::Map map(model::Map::Id{std::move(id)}, std::move(name));
             
+            // Читаем скорость для конкретной карты (если нет, берем default_speed)
+            if (map_obj.contains("dogSpeed")) {
+                map.SetDogSpeed(map_obj.at("dogSpeed").as_double());
+            } else {
+                map.SetDogSpeed(default_speed);
+            }
+            
+            // Читаем дороги
             if (map_obj.contains("roads") && map_obj.at("roads").is_array()) {
                 for (const auto& road_json : map_obj.at("roads").as_array()) {
                     json::object road = road_json.as_object();
@@ -45,6 +61,7 @@ model::Game LoadGame(const std::filesystem::path& json_path) {
                 }
             }
             
+            // Читаем здания
             if (map_obj.contains("buildings") && map_obj.at("buildings").is_array()) {
                 for (const auto& building_json : map_obj.at("buildings").as_array()) {
                     json::object building = building_json.as_object();
@@ -56,6 +73,7 @@ model::Game LoadGame(const std::filesystem::path& json_path) {
                 }
             }
             
+            // Читаем офисы
             if (map_obj.contains("offices") && map_obj.at("offices").is_array()) {
                 for (const auto& office_json : map_obj.at("offices").as_array()) {
                     json::object office = office_json.as_object();
@@ -71,12 +89,11 @@ model::Game LoadGame(const std::filesystem::path& json_path) {
                     ));
                 }
             }
-            
             game.AddMap(std::move(map));
         }
     }
     
-    return std::move(game);
+    return game;
 }
 
 }  // namespace json_loader

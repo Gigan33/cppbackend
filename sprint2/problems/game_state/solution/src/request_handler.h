@@ -25,6 +25,7 @@ inline constexpr std::string_view MAPS_PREFIX = "/api/v1/maps/";
 inline constexpr std::string_view JOIN_GAME_ENDPOINT = "/api/v1/game/join";
 inline constexpr std::string_view PLAYERS_ENDPOINT = "/api/v1/game/players";
 inline constexpr std::string_view GAME_STATE_ENDPOINT = "/api/v1/game/state";
+inline constexpr std::string_view ACTION_ENDPOINT = "/api/v1/game/player/action";
 
 inline std::string UrlDecode(std::string_view encoded) {
     std::string result;
@@ -109,6 +110,8 @@ public:
                         response = HandleGetPlayers(req, req.version(), req.keep_alive());
                     } else if (decoded_target == GAME_STATE_ENDPOINT) {
                         response = HandleGetGameState(req, req.version(), req.keep_alive());
+                    } else if (decoded_target == ACTION_ENDPOINT) {
+                        response = HandlePlayerAction(req, req.version(), req.keep_alive());
                     } else if (decoded_target.rfind(MAPS_PREFIX.data(), 0) == 0) {
                         if (req.method() == http::verb::get) {
                             std::string map_id = decoded_target.substr(MAPS_PREFIX.size());
@@ -150,17 +153,41 @@ private:
     std::string static_dir_;
     Strand api_strand_;
 
+    // Универсальный шаблонный метод авторизации по токену
+    template <typename Body, typename Allocator, typename Fn>
+    StringResponse ExecuteAuthorized(const http::request<Body, http::basic_fields<Allocator>>& req, 
+                                     unsigned version, bool keep_alive, Fn&& action) {
+        auto auth_it = req.find(http::field::authorization);
+        if (auth_it == req.end()) {
+            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Authorization header is required", version, keep_alive);
+        }
+
+        std::string_view auth_header = auth_it->value();
+        std::string_view bearer_prefix = "Bearer ";
+        if (auth_header.rfind(bearer_prefix, 0) != 0) {
+            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
+        }
+
+        std::string token_str(auth_header.substr(bearer_prefix.size()));
+        token_str.erase(std::remove_if(token_str.begin(), token_str.end(), ::isspace), token_str.end());
+
+        if (token_str.empty() || token_str.size() != 32) {
+            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
+        }
+
+        model::Token token{token_str};
+        auto player = game_.FindPlayerByToken(token);
+        if (!player) {
+            return MakeJoinErrorResponse(http::status::unauthorized, "unknownToken", "Player token has not been found", version, keep_alive);
+        }
+
+        return action(player);
+    }
+
     template <typename Body, typename Allocator>
     StringResponse HandleJoinGame(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive) {
         if (req.method() != http::verb::post) {
-            StringResponse response(http::status::method_not_allowed, version);
-            response.set(http::field::content_type, "application/json");
-            response.set(http::field::cache_control, "no-cache");
-            response.set(http::field::allow, "POST");
-            response.body() = "{\"code\":\"invalidMethod\",\"message\":\"Only POST method is allowed\"}";
-            response.content_length(response.body().size());
-            response.keep_alive(keep_alive);
-            return response;
+            return MakeMethodNotAllowedResponse("POST", version, keep_alive, "Only POST method is allowed");
         }
 
         try {
@@ -185,18 +212,11 @@ private:
 
             auto [token, player_id] = game_.JoinGame(map_id, user_name);
 
-            StringResponse response(http::status::ok, version);
-            response.set(http::field::content_type, "application/json");
-            response.set(http::field::cache_control, "no-cache");
-
             json::object res_obj;
             res_obj["authToken"] = *token;
             res_obj["playerId"] = player_id;
 
-            response.body() = json::serialize(res_obj);
-            response.content_length(response.body().size());
-            response.keep_alive(keep_alive);
-            return response;
+            return MakeJsonResponse(http::status::ok, res_obj, true, version, keep_alive);
 
         } catch (const std::invalid_argument& e) {
             std::string err_str = e.what();
@@ -212,60 +232,105 @@ private:
     template <typename Body, typename Allocator>
     StringResponse HandleGetPlayers(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive) {
         if (req.method() != http::verb::get && req.method() != http::verb::head) {
-            StringResponse response(http::status::method_not_allowed, version);
-            response.set(http::field::content_type, "application/json");
-            response.set(http::field::cache_control, "no-cache");
-            response.set(http::field::allow, "GET, HEAD");
-            response.body() = "{\"code\":\"invalidMethod\",\"message\":\"Invalid method\"}";
-            response.content_length(response.body().size());
-            response.keep_alive(keep_alive);
-            return response;
+            return MakeMethodNotAllowedResponse("GET, HEAD", version, keep_alive);
         }
 
-        auto auth_it = req.find(http::field::authorization);
-        if (auth_it == req.end()) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Authorization header is required", version, keep_alive);
-        }
+        return ExecuteAuthorized(req, version, keep_alive, [this, &req, version, keep_alive](auto player) {
+            json::object root_obj;
+            auto current_session = player->GetSession();
 
-        std::string_view auth_header = auth_it->value();
-        std::string_view bearer_prefix = "Bearer ";
-        if (auth_header.rfind(bearer_prefix, 0) != 0) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
-        }
-
-        std::string token_str(auth_header.substr(bearer_prefix.size()));
-        token_str.erase(std::remove_if(token_str.begin(), token_str.end(), ::isspace), token_str.end());
-
-        if (token_str.empty() || token_str.size() != 32) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
-        }
-
-        model::Token token{token_str};
-        auto player = game_.FindPlayerByToken(token);
-        if (!player) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "unknownToken", "Player token has not been found", version, keep_alive);
-        }
-
-        json::object root_obj;
-        auto current_session = player->GetSession();
-
-        for (const auto& p : game_.GetPlayers()) {
-            if (p->GetSession() == current_session) {
-                json::object player_obj;
-                player_obj["name"] = p->GetName();
-                root_obj[std::to_string(p->GetId())] = player_obj;
+            for (const auto& p : game_.GetPlayers()) {
+                if (p->GetSession() == current_session) {
+                    json::object player_obj;
+                    player_obj["name"] = p->GetName();
+                    root_obj[std::to_string(p->GetId())] = player_obj;
+                }
             }
+
+            return MakeJsonResponse(http::status::ok, root_obj, req.method() == http::verb::get, version, keep_alive);
+        });
+    }
+
+    template <typename Body, typename Allocator>
+    StringResponse HandleGetGameState(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive) {
+        if (req.method() != http::verb::get && req.method() != http::verb::head) {
+            return MakeMethodNotAllowedResponse("GET, HEAD", version, keep_alive);
         }
 
-        StringResponse response(http::status::ok, version);
+        return ExecuteAuthorized(req, version, keep_alive, [this, &req, version, keep_alive](auto player) {
+            json::object players_obj;
+            auto current_session = player->GetSession();
+
+            for (const auto& p : game_.GetPlayers()) {
+                if (p->GetSession() == current_session) {
+                    json::object dog_obj;
+                    
+                    json::array pos_arr{p->GetDog().GetPosition().x, p->GetDog().GetPosition().y};
+                    dog_obj["pos"] = pos_arr;
+
+                    json::array speed_arr{p->GetDog().GetSpeed().ux, p->GetDog().GetSpeed().uy};
+                    dog_obj["speed"] = speed_arr;
+
+                    dog_obj["dir"] = p->GetDog().GetDirectionString();
+
+                    players_obj[std::to_string(p->GetId())] = dog_obj;
+                }
+            }
+
+            json::object root_obj;
+            root_obj["players"] = players_obj;
+
+            return MakeJsonResponse(http::status::ok, root_obj, req.method() == http::verb::get, version, keep_alive);
+        });
+    }
+
+    template <typename Body, typename Allocator>
+    StringResponse HandlePlayerAction(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive) {
+        if (req.method() != http::verb::post) {
+            return MakeMethodNotAllowedResponse("POST", version, keep_alive);
+        }
+
+        auto ct_it = req.find(http::field::content_type);
+        if (ct_it == req.end() || ct_it->value() != "application/json") {
+            return MakeJoinErrorResponse(http::status::bad_request, "invalidArgument", "Invalid content type", version, keep_alive);
+        }
+
+        return ExecuteAuthorized(req, version, keep_alive, [this, &req, version, keep_alive](auto player) {
+            try {
+                auto json_doc = json::parse(req.body());
+                if (!json_doc.is_object() || !json_doc.as_object().contains("move")) {
+                    return MakeJoinErrorResponse(http::status::bad_request, "invalidArgument", "Failed to parse action", version, keep_alive);
+                }
+
+                std::string move_action = json::value_to<std::string>(json_doc.as_object().at("move"));
+                
+                if (move_action != "L" && move_action != "R" && move_action != "U" && move_action != "D" && move_action != "") {
+                    return MakeJoinErrorResponse(http::status::bad_request, "invalidArgument", "Failed to parse action", version, keep_alive);
+                }
+
+                auto session = player->GetSession();
+                const model::Map* map = game_.FindMap(session->GetMapId());
+                double speed = map ? map->GetDogSpeed() : game_.GetDefaultDogSpeed();
+
+                player->GetDog().Move(move_action, speed);
+
+                json::object root_obj;
+                return MakeJsonResponse(http::status::ok, root_obj, true, version, keep_alive);
+
+            } catch (...) {
+                return MakeJoinErrorResponse(http::status::bad_request, "invalidArgument", "Failed to parse action", version, keep_alive);
+            }
+        });
+    }
+
+    // Помощник для генерации стандартных ответов JSON
+    StringResponse MakeJsonResponse(http::status status, const json::object& json_body, bool send_body, unsigned version, bool keep_alive) {
+        StringResponse response(status, version);
         response.set(http::field::content_type, "application/json");
         response.set(http::field::cache_control, "no-cache");
-
-        std::string json_str = json::serialize(root_obj);
-        if (req.method() == http::verb::get) {
-            response.body() = std::move(json_str);
-        } else {
-            response.body() = "";
+        
+        if (send_body) {
+            response.body() = json::serialize(json_body);
         }
         
         response.content_length(response.body().size());
@@ -273,83 +338,18 @@ private:
         return response;
     }
 
-    template <typename Body, typename Allocator>
-    StringResponse HandleGetGameState(const http::request<Body, http::basic_fields<Allocator>>& req, unsigned version, bool keep_alive) {
-        if (req.method() != http::verb::get && req.method() != http::verb::head) {
-            StringResponse response(http::status::method_not_allowed, version);
-            response.set(http::field::content_type, "application/json");
-            response.set(http::field::cache_control, "no-cache");
-            response.set(http::field::allow, "GET, HEAD");
-            response.body() = "{\"code\":\"invalidMethod\",\"message\":\"Invalid method\"}";
-            response.content_length(response.body().size());
-            response.keep_alive(keep_alive);
-            return response;
-        }
-
-        auto auth_it = req.find(http::field::authorization);
-        if (auth_it == req.end()) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Authorization header is required", version, keep_alive);
-        }
-
-        std::string_view auth_header = auth_it->value();
-        std::string_view bearer_prefix = "Bearer ";
-        if (auth_header.rfind(bearer_prefix, 0) != 0) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
-        }
-
-        std::string token_str(auth_header.substr(bearer_prefix.size()));
-        token_str.erase(std::remove_if(token_str.begin(), token_str.end(), ::isspace), token_str.end());
-
-        if (token_str.empty() || token_str.size() != 32) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
-        }
-
-        model::Token token{token_str};
-        auto player = game_.FindPlayerByToken(token);
-        if (!player) {
-            return MakeJoinErrorResponse(http::status::unauthorized, "unknownToken", "Player token has not been found", version, keep_alive);
-        }
-
-        json::object players_obj;
-        auto current_session = player->GetSession();
-
-        for (const auto& p : game_.GetPlayers()) {
-            if (p->GetSession() == current_session) {
-                json::object dog_obj;
-                
-                // "pos": [x, y]
-                json::array pos_arr;
-                pos_arr.push_back(p->GetDog().GetPosition().x);
-                pos_arr.push_back(p->GetDog().GetPosition().y);
-                dog_obj["pos"] = pos_arr;
-
-                // "speed": [vx, vy]
-                json::array speed_arr;
-                speed_arr.push_back(p->GetDog().GetSpeed().ux);
-                speed_arr.push_back(p->GetDog().GetSpeed().uy);
-                dog_obj["speed"] = speed_arr;
-
-                // "dir": "U", "D", "L", "R"
-                dog_obj["dir"] = p->GetDog().GetDirectionString();
-
-                players_obj[std::to_string(p->GetId())] = dog_obj;
-            }
-        }
-
-        json::object root_obj;
-        root_obj["players"] = players_obj;
-
-        StringResponse response(http::status::ok, version);
+    // Помощник для ошибок 405 Method Not Allowed
+    StringResponse MakeMethodNotAllowedResponse(std::string_view allow_methods, unsigned version, bool keep_alive, std::string_view msg = "Invalid method") {
+        StringResponse response(http::status::method_not_allowed, version);
         response.set(http::field::content_type, "application/json");
         response.set(http::field::cache_control, "no-cache");
-
-        std::string json_str = json::serialize(root_obj);
-        if (req.method() == http::verb::get) {
-            response.body() = std::move(json_str);
-        } else {
-            response.body() = "";
-        }
+        response.set(http::field::allow, allow_methods.data());
         
+        json::object err_obj;
+        err_obj["code"] = "invalidMethod";
+        err_obj["message"] = msg.data();
+        
+        response.body() = json::serialize(err_obj);
         response.content_length(response.body().size());
         response.keep_alive(keep_alive);
         return response;
