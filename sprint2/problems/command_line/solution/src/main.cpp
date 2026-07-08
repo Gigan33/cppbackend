@@ -122,7 +122,6 @@ int main(int argc, char* argv[]) {
             logging_handler(std::forward<decltype(req)>(req), std::forward<decltype(send)>(send));
         });
 
-        // Используем вынесенный класс из пространства имен util
         std::shared_ptr<util::Ticker> ticker;
         if (args->tick_period) {
             std::chrono::milliseconds period{*args->tick_period};
