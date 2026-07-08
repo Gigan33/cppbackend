@@ -22,7 +22,7 @@ void Ticker::Start() {
 
 void Ticker::OnTimer(const sys::error_code& ec) {
     if (ec) {
-        return; // Таймер был отменен или произошла ошибка
+        return;
     }
     
     auto current_tick = std::chrono::steady_clock::now();
@@ -32,7 +32,7 @@ void Ticker::OnTimer(const sys::error_code& ec) {
     try {
         handler_(duration);
     } catch (...) {
-        // Защищаем внутренний цикл таймера от вылета исключений из обработчика
+
     }
 
     timer_.expires_after(period_);
