@@ -103,7 +103,7 @@ model::Game LoadGame(const std::filesystem::path& json_path) {
     if (const auto* maps_ptr = obj.if_contains("maps")) {
         if (maps_ptr->is_array()) {
             for (const auto& map_json : maps_ptr->as_array()) {
-                game.AddMap(ParseMap(map_json, default_speed));
+                game.AddMap(helper::ParseMap(map_json, default_speed));
             }
         }
     }
