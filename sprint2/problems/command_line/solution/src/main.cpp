@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
         const auto address = net::ip::make_address("0.0.0.0");
         constexpr unsigned short port = 8080;
 
-        auto api_strand = net::make_strand(ioc);
+        auto api_strand = std::make_shared<net::strand<net::io_context::executor_type>>(net::make_strand(ioc));
 
         bool auto_tick_enabled = args->tick_period.has_value();
         auto handler = std::make_shared<http_handler::RequestHandler>(
