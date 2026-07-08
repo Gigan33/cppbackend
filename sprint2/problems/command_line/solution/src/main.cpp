@@ -109,11 +109,14 @@ int main(int argc, char* argv[]) {
         const auto address = net::ip::make_address("0.0.0.0");
         constexpr unsigned short port = 8080;
 
-        auto api_strand = net::make_strand(ioc);
+        // Выделяем кучу под strand, чтобы им владел и RequestHandler, и Ticker
+        auto api_strand = std::make_shared<net::strand<net::io_context::executor_type>>(
+            net::make_strand(ioc)
+        );
 
         bool auto_tick_enabled = args->tick_period.has_value();
         auto handler = std::make_shared<http_handler::RequestHandler>(
-            game, args->www_root, api_strand, auto_tick_enabled
+            game, args->www_root, *api_strand, auto_tick_enabled
         );
 
         http_handler::LoggingHandler<http_handler::RequestHandler> logging_handler(*handler);
@@ -122,7 +125,7 @@ int main(int argc, char* argv[]) {
             logging_handler(std::forward<decltype(req)>(req), std::forward<decltype(send)>(send));
         });
 
-        // Используем вынесенный класс из пространства имен util
+        // Теперь Ticker без проблем примет обертку умного указателя
         std::shared_ptr<util::Ticker> ticker;
         if (args->tick_period) {
             std::chrono::milliseconds period{*args->tick_period};
