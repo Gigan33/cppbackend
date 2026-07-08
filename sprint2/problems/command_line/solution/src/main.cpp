@@ -1,6 +1,7 @@
 #include "sdk.h"
 #include "json_loader.h"
 #include "request_handler.h"
+#include "ticker.h"
 #include "http_server.h"
 #include "logger.h"
 #include "logging_handler.h"
@@ -20,58 +21,6 @@
 using namespace std::literals;
 namespace net = boost::asio;
 namespace sys = boost::system;
-
-class Ticker : public std::enable_shared_from_this<Ticker> {
-public:
-    using Strand = net::strand<net::io_context::executor_type>;
-    using Handler = std::function<void(std::chrono::milliseconds delta)>;
-
-    Ticker(Strand strand, std::chrono::milliseconds period, Handler handler)
-        : strand_{strand}
-        , period_{period}
-        , handler_{std::move(handler)} {
-    }
-
-    void Start() {
-        last_tick_ = Clock::now();
-        net::dispatch(strand_, [self = shared_from_this()] {
-            self->ScheduleTick();
-        });
-    }
-
-private:
-    void ScheduleTick() {
-        assert(strand_.running_in_this_thread());
-        timer_.expires_after(period_);
-        timer_.async_wait([self = shared_from_this()](sys::error_code ec) {
-            self->OnTick(ec);
-        });
-    }
-
-    void OnTick(sys::error_code ec) {
-        using namespace std::chrono;
-        assert(strand_.running_in_this_thread());
-
-        if (!ec) {
-            auto this_tick = Clock::now();
-            auto delta = duration_cast<milliseconds>(this_tick - last_tick_);
-            last_tick_ = this_tick;
-            try {
-                handler_(delta);
-            } catch (...) {
-            }
-            ScheduleTick();
-        }
-    }
-
-    using Clock = std::chrono::steady_clock;
-
-    Strand strand_;
-    std::chrono::milliseconds period_;
-    net::steady_timer timer_{strand_};
-    Handler handler_;
-    std::chrono::steady_clock::time_point last_tick_;
-};
 
 namespace {
 
@@ -173,10 +122,11 @@ int main(int argc, char* argv[]) {
             logging_handler(std::forward<decltype(req)>(req), std::forward<decltype(send)>(send));
         });
 
-        std::shared_ptr<Ticker> ticker;
+        // Используем вынесенный класс из пространства имен util
+        std::shared_ptr<util::Ticker> ticker;
         if (args->tick_period) {
             std::chrono::milliseconds period{*args->tick_period};
-            ticker = std::make_shared<Ticker>(
+            ticker = std::make_shared<util::Ticker>(
                 api_strand, 
                 period,
                 [&game](std::chrono::milliseconds delta) {

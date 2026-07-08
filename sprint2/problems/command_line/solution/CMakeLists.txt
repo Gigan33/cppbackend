@@ -20,6 +20,7 @@ add_executable(game_server
     src/json_loader.cpp
     src/model.cpp
     src/logger.cpp
+    src/ticker.cpp
 )
 
 target_include_directories(game_server PRIVATE CONAN_PKG::boost)

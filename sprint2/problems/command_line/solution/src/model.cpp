@@ -4,6 +4,10 @@
 
 namespace model {
 
+namespace {
+constexpr double ROAD_HALF_WIDTH = 0.4;
+} // namespace
+
 struct RoadBounds {
     double min_x, max_x;
     double min_y, max_y;
@@ -12,11 +16,10 @@ struct RoadBounds {
 RoadBounds GetRoadBounds(const Road& road) {
     auto start = road.GetStart();
     auto end = road.GetEnd();
-    
-    double min_x = std::min(start.x, end.x) - 0.4;
-    double max_x = std::max(start.x, end.x) + 0.4;
-    double min_y = std::min(start.y, end.y) - 0.4;
-    double max_y = std::max(start.y, end.y) + 0.4;
+    double min_x = std::min(start.x, end.x) - ROAD_HALF_WIDTH;
+    double max_x = std::max(start.x, end.x) + ROAD_HALF_WIDTH;
+    double min_y = std::min(start.y, end.y) - ROAD_HALF_WIDTH;
+    double max_y = std::max(start.y, end.y) + ROAD_HALF_WIDTH;
     
     return {min_x, max_x, min_y, max_y};
 }
@@ -68,7 +71,7 @@ void Dog::UpdatePosition(double dt, const Map* map) {
     double max_allowed_x = next_pos.x;
     double max_allowed_y = next_pos.y;
 
-    if (speed_.ux > 0) { // Движение направо
+    if (speed_.ux > 0) {
         double limit = -1e9;
         for (const auto* road : current_roads) {
             limit = std::max(limit, GetRoadBounds(*road).max_x);
@@ -76,7 +79,7 @@ void Dog::UpdatePosition(double dt, const Map* map) {
         max_allowed_x = std::min(next_pos.x, limit);
         speed_.ux = 0.0;
     } 
-    else if (speed_.ux < 0) { // Движение налево
+    else if (speed_.ux < 0) {
         double limit = 1e9;
         for (const auto* road : current_roads) {
             limit = std::min(limit, GetRoadBounds(*road).min_x);
@@ -84,7 +87,7 @@ void Dog::UpdatePosition(double dt, const Map* map) {
         max_allowed_x = std::max(next_pos.x, limit);
         speed_.ux = 0.0;
     } 
-    else if (speed_.uy > 0) { // Движение вниз
+    else if (speed_.uy > 0) {
         double limit = -1e9;
         for (const auto* road : current_roads) {
             limit = std::max(limit, GetRoadBounds(*road).max_y);
@@ -92,7 +95,7 @@ void Dog::UpdatePosition(double dt, const Map* map) {
         max_allowed_y = std::min(next_pos.y, limit);
         speed_.uy = 0.0;
     } 
-    else if (speed_.uy < 0) { // Движение вверх
+    else if (speed_.uy < 0) {
         double limit = 1e9;
         for (const auto* road : current_roads) {
             limit = std::min(limit, GetRoadBounds(*road).min_y);

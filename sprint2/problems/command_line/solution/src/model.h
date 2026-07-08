@@ -331,10 +331,8 @@ public:
     }
 
     std::shared_ptr<Player> FindPlayerByToken(const Token& token) const {
-        if (auto it = token_to_player_.find(token); it != token_to_player_.end()) {
-            return it->second;
-        }
-        return nullptr;
+        auto it = token_to_player_.find(token);
+        return (it != token_to_player_.end()) ? it->second : nullptr;
     }
 
 private:
@@ -383,10 +381,8 @@ public:
     }
 
     const Map* FindMap(const Map::Id& id) const noexcept {
-        if (auto it = map_id_to_index_.find(id); it != map_id_to_index_.end()) {
-            return &maps_.at(it->second);
-        }
-        return nullptr;
+        auto it = map_id_to_index_.find(id);
+        return (it != map_id_to_index_.end()) ? &maps_.at(it->second) : nullptr;
     }
 
     void SetRandomizeSpawnPoints(bool randomize) noexcept {
