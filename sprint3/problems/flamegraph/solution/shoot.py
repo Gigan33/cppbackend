@@ -1,4 +1,4 @@
-import argparse
+п»їimport argparse
 import os
 import random
 import shlex
@@ -33,32 +33,32 @@ def make_shots():
         shoot(ammo)
         time.sleep(0.1)
 
-# --- Точка входа в скрипт ---
+# --- Entry point ---
 
 server_command = start_server(os.sys.argv[1])
 
-print("Запуск игрового сервера...")
+print("Starting game server...")
 server_proc = run(server_command)
 time.sleep(0.5)
 
 try:
     perf_command = f"perf record -g -p {server_proc.pid} -o perf.data"
-    print(f"Запуск perf record для PID {server_proc.pid}...")
+    print(f"Starting perf record for PID {server_proc.pid}...")
     perf_proc = subprocess.Popen(shlex.split(perf_command), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(0.5)
 
-    print("Обстрел сервера запросами...")
+    print("Shooting requests...")
     make_shots()
 
-    print("Остановка perf record...")
+    print("Stopping perf record...")
     perf_proc.send_signal(signal.SIGINT)
     perf_proc.wait()
 
 finally:
-    print("Остановка игрового сервера...")
+    print("Stopping game server...")
     stop(server_proc)
 
-print("Генерация graph.svg...")
+print("Generating graph.svg...")
 try:
     perf_script_proc = subprocess.Popen(
         shlex.split("perf script -i perf.data"), 
@@ -84,6 +84,6 @@ try:
         collapse_proc.stdout.close()
         flamegraph_proc.wait()
 
-    print("Успех! Файл graph.svg сгенерирован.")
+    print("Success! graph.svg generated.")
 except Exception as e:
-    print(f"Ошибка при генерации флеймграфа: {e}")
+    print(f"Error generating flamegraph: {e}")
