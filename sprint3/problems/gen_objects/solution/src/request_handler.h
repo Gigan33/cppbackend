@@ -106,7 +106,7 @@ public:
         return response;
     }
 
-    StringResponse MakeMapsListResponse(unsigned version, bool keep_alive) {
+    StringResponse MakeMapsListResponse(unsigned version, bool keep_alive, bool send_body = true) {
         StringResponse response(http::status::ok, version);
         response.set(http::field::content_type, "application/json");
         response.set(http::field::cache_control, "no-cache");
@@ -121,9 +121,11 @@ public:
         
         response.body() = json::serialize(arr);
         response.content_length(response.body().size());
+
         if (!send_body) {
             response.body().clear();
         }
+
         response.keep_alive(keep_alive);
         return response;
     }
