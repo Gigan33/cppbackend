@@ -121,6 +121,9 @@ public:
         
         response.body() = json::serialize(arr);
         response.content_length(response.body().size());
+        if (!send_body) {
+            response.body().clear();
+        }
         response.keep_alive(keep_alive);
         return response;
     }
@@ -251,8 +254,20 @@ public:
                 }
             }
 
+            json::object lost_objects_obj;
+            if (current_session) {
+                for (const auto& [obj_id, lost_obj] : current_session->GetLostObjects()) {
+                    json::object item_obj;
+                    item_obj["type"] = lost_obj.type;
+                    item_obj["pos"] = json::array{lost_obj.position.x, lost_obj.position.y};
+
+                    lost_objects_obj[std::to_string(obj_id)] = item_obj;
+                }
+            }
+
             json::object root_obj;
             root_obj["players"] = players_obj;
+            root_obj["lostObjects"] = lost_objects_obj;
 
             return MakeJsonResponse(http::status::ok, root_obj, req.method() == http::verb::get, version, keep_alive);
         });
@@ -355,79 +370,84 @@ public:
     }
 
     template <typename Body, typename Allocator, typename Send>
-    void operator()(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send) {
-        std::string target(req.target());
-        std::string decoded_target = UrlDecode(target);
-        
-        if (decoded_target.rfind(API_PREFIX.data(), 0) == 0) {
-            auto handle = [this, req = std::move(req), send = std::forward<Send>(send), decoded_target = std::move(decoded_target)]() mutable {    
-                try {
-                    assert(api_strand_.running_in_this_thread());
-                    
-                    StringResponse response;
-                    
-                    if (decoded_target == MAPS_ENDPOINT) {
-                        if (req.method() == http::verb::get) {
-                            response = MakeMapsListResponse(req.version(), req.keep_alive());
-                        } else {
-                            response = MakeApiBadRequestResponse(req.version(), req.keep_alive());
-                        }
-                    } else if (decoded_target == JOIN_GAME_ENDPOINT) {
-                        response = HandleJoinGame(req, req.version(), req.keep_alive());
-                    } else if (decoded_target == PLAYERS_ENDPOINT) {
-                        response = HandleGetPlayers(req, req.version(), req.keep_alive());
-                    } else if (decoded_target == GAME_STATE_ENDPOINT) {
-                        response = HandleGetGameState(req, req.version(), req.keep_alive());
-                    } else if (decoded_target == ACTION_ENDPOINT) {
-                        response = HandlePlayerAction(req, req.version(), req.keep_alive());
-                    } else if (decoded_target == TICK_ENDPOINT) {
-                        if (auto_tick_enabled_) {
-                            json::object error_obj;
-                            error_obj["code"] = "badRequest";
-                            error_obj["message"] = "Invalid endpoint";
-                            
-                            response = MakeStringResponse(http::status::bad_request, 
-                                                        json::serialize(error_obj), 
-                                                        req.version(), req.keep_alive(), 
-                                                        "application/json", {}, "no-cache");
-                        } else {
-                            response = HandleTickRequest(req, req.version(), req.keep_alive());
-                        }
-                    } else if (decoded_target.rfind(MAPS_PREFIX.data(), 0) == 0) {
-                        if (req.method() == http::verb::get) {
-                            std::string map_id = decoded_target.substr(MAPS_PREFIX.size());
-                            response = MakeMapResponse(map_id, req.version(), req.keep_alive());
-                        } else {
-                            response = MakeApiBadRequestResponse(req.version(), req.keep_alive());
-                        }
+void operator()(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send) {
+    std::string target(req.target());
+    std::string decoded_target = UrlDecode(target);
+    
+    if (decoded_target.rfind(API_PREFIX.data(), 0) == 0) {
+        auto handle = [this, req = std::move(req), send = std::forward<Send>(send), decoded_target = std::move(decoded_target)]() mutable {    
+            try {
+                assert(api_strand_.running_in_this_thread());
+                
+                StringResponse response;
+                
+                if (decoded_target == MAPS_ENDPOINT) {
+                    if (req.method() == http::verb::get || req.method() == http::verb::head) {
+                        response = MakeMapsListResponse(req.version(), req.keep_alive());
                     } else {
-                        response = MakeApiBadRequestResponse(req.version(), req.keep_alive());
+                        response = MakeMethodNotAllowedResponse("GET, HEAD", req.version(), req.keep_alive());
                     }
-
-                    send(std::move(response));
-                    
-                } catch (...) {
-                    send(MakeApiBadRequestResponse(req.version(), req.keep_alive()));
+                } else if (decoded_target == JOIN_GAME_ENDPOINT) {
+                    response = HandleJoinGame(req, req.version(), req.keep_alive());
+                } else if (decoded_target == PLAYERS_ENDPOINT) {
+                    response = HandleGetPlayers(req, req.version(), req.keep_alive());
+                } else if (decoded_target == GAME_STATE_ENDPOINT) {
+                    response = HandleGetGameState(req, req.version(), req.keep_alive());
+                } else if (decoded_target == ACTION_ENDPOINT) {
+                    response = HandlePlayerAction(req, req.version(), req.keep_alive());
+                } else if (decoded_target == TICK_ENDPOINT) {
+                    if (auto_tick_enabled_) {
+                        json::object error_obj;
+                        error_obj["code"] = "badRequest";
+                        error_obj["message"] = "Invalid endpoint";
+                        
+                        response = MakeStringResponse(http::status::bad_request, 
+                                                       json::serialize(error_obj), 
+                                                       req.version(), req.keep_alive(), 
+                                                       "application/json", {}, "no-cache");
+                    } else {
+                        response = HandleTickRequest(req, req.version(), req.keep_alive());
+                    }
+                } else if (decoded_target.rfind(MAPS_PREFIX.data(), 0) == 0) {
+                    if (req.method() == http::verb::get || req.method() == http::verb::head) {
+                        std::string map_id = decoded_target.substr(MAPS_PREFIX.size());
+                        response = MakeMapResponse(map_id, req.version(), req.keep_alive());
+                    } else {
+                        response = MakeMethodNotAllowedResponse("GET, HEAD", req.version(), req.keep_alive());
+                    }
+                } else {
+                    response = MakeApiBadRequestResponse(req.version(), req.keep_alive());
                 }
-            };
 
-            return boost::asio::dispatch(api_strand_, std::move(handle));
-        } 
-        else {
-            StringResponse response;
-            if (static_dir_.empty()) {
-                response = MakeStaticBadRequestResponse(req.version(), req.keep_alive());
-            } else {
-                std::string relative_path = decoded_target;
-                if (!relative_path.empty() && relative_path[0] == '/') {
-                    relative_path.erase(0, 1);
-                }
-                fs::path full_path = fs::path(static_dir_) / relative_path;
-                response = MakeFileResponse(full_path, req.version(), req.keep_alive());
+                send(std::move(response));
+                
+            } catch (...) {
+                send(MakeApiBadRequestResponse(req.version(), req.keep_alive()));
             }
-            send(std::move(response));
+        };
+
+        return boost::asio::dispatch(api_strand_, std::move(handle));
+    } 
+    else {
+        // Обработка статических файлов
+        StringResponse response;
+        if (req.method() != http::verb::get && req.method() != http::verb::head) {
+            response = MakeStringResponse(http::status::method_not_allowed, "Method Not Allowed", 
+                                          req.version(), req.keep_alive(), "text/plain", 
+                                          {{"Allow", "GET, HEAD"}});
+        } else if (static_dir_.empty()) {
+            response = MakeStaticBadRequestResponse(req.version(), req.keep_alive());
+        } else {
+            std::string relative_path = decoded_target;
+            if (!relative_path.empty() && relative_path[0] == '/') {
+                relative_path.erase(0, 1);
+            }
+            fs::path full_path = fs::path(static_dir_) / relative_path;
+            response = MakeFileResponse(full_path, req.version(), req.keep_alive());
         }
+        send(std::move(response));
     }
+}
 
 private:
     model::Game& game_;
