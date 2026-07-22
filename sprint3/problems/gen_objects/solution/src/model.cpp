@@ -166,7 +166,7 @@ model::Point2D model::GameSession::GetRandomPosition() {
     return {x, y};
 }
 
-void GameSession::GenerateLoot(double dt, const loot_gen::LootGenerator& generator) {
+void GameSession::GenerateLoot(double dt, loot_gen::LootGenerator& generator) {
     auto time_delta = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::duration<double>(dt)
     );

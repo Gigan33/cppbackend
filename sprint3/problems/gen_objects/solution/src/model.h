@@ -305,7 +305,7 @@ public:
     }
 
     void Tick(double dt);
-
+    
 private:
     Point2D GetRandomPosition();
 
