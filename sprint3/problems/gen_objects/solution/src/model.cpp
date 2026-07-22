@@ -166,9 +166,11 @@ model::Point2D model::GameSession::GetRandomPosition() {
     return {x, y};
 }
 
-void Game::Tick(double dt) {
-    for (auto& session : sessions_) {
-        session->Tick(dt);
+void GameSession::Tick(double dt) {
+    for (auto& [id, dog] : dogs_) {
+        if (dog) {
+            dog->Move(dt, *map_);
+        }
     }
 }
 
