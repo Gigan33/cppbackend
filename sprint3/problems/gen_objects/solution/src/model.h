@@ -305,7 +305,6 @@ public:
     }
 
     void Tick(double dt);
-}
 
 private:
     Point2D GetRandomPosition();
@@ -448,11 +447,7 @@ public:
 
     const std::vector<std::shared_ptr<Player>>& GetPlayers() const noexcept { return players_; }
 
-    void Tick(double dt) {
-        for (auto& session : sessions_) {
-            session->Tick(dt);
-        }
-    }
+    void Tick(double dt);
 
     void SetLootGeneratorConfig(LootGeneratorConfig config) {
         loot_config_ = config;
