@@ -283,7 +283,7 @@ public:
         return lost_objects_;
     }
 
-    void GenerateLoot(double dt, const loot_gen::LootGenerator& generator);
+    void GenerateLoot(double dt, loot_gen::LootGenerator& generator);
 
     std::shared_ptr<Dog> CreateDog(const std::string& dog_name, bool randomize_spawn) {
         uint32_t dog_id = next_dog_id_++;
@@ -304,10 +304,7 @@ public:
         return dog;
     }
 
-    void Tick(double dt) {
-    for (auto& dog : dogs_) {
-        dog->UpdatePosition(dt, map_);
-    }
+    void Tick(double dt);
 }
 
 private:
