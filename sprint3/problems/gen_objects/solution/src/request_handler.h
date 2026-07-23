@@ -156,8 +156,11 @@ public:
         result["roads"] = SerializeRoads(map);
         result["buildings"] = SerializeBuildings(map);
         result["offices"] = SerializeOffices(map);
+        result["lootTypes"] = map->GetLootTypes();
         
-        response.body() = json::serialize(result);
+        if (send_body) {
+            response.body() = json::serialize(result);
+        }
         response.content_length(response.body().size());
         response.keep_alive(keep_alive);
         return response;
@@ -240,24 +243,22 @@ public:
             json::object players_obj;
             auto current_session = player->GetSession();
 
+            // 1. Игроки
             for (const auto& p : game_.GetPlayers()) {
                 if (p->GetSession() == current_session) {
                     json::object dog_obj;
-                    
-                    json::array pos_arr{p->GetDog().GetPosition().x, p->GetDog().GetPosition().y};
-                    dog_obj["pos"] = pos_arr;
-
-                    json::array speed_arr{p->GetDog().GetSpeed().ux, p->GetDog().GetSpeed().uy};
-                    dog_obj["speed"] = speed_arr;
-
+                    dog_obj["pos"] = json::array{p->GetDog().GetPosition().x, p->GetDog().GetPosition().y};
+                    dog_obj["speed"] = json::array{p->GetDog().GetSpeed().ux, p->GetDog().GetSpeed().uy};
                     dog_obj["dir"] = p->GetDog().GetDirectionString();
 
                     players_obj[std::to_string(p->GetId())] = dog_obj;
                 }
             }
 
+            // 2. Потерянные объекты (Loot)
             json::object lost_objects_obj;
             if (current_session) {
+                // Если GetLostObjects() возвращает std::map<Id, LostObject>:
                 for (const auto& [obj_id, lost_obj] : current_session->GetLostObjects()) {
                     json::object item_obj;
                     item_obj["type"] = lost_obj.type;
@@ -267,6 +268,7 @@ public:
                 }
             }
 
+            // 3. Итоговый JSON
             json::object root_obj;
             root_obj["players"] = players_obj;
             root_obj["lostObjects"] = lost_objects_obj;
