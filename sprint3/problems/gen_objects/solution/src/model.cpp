@@ -194,7 +194,11 @@ void GameSession::GenerateLoot(double dt, loot_gen::LootGenerator& generator) {
         return;
     }
 
-    size_t types_count = map_->GetLootTypes().size();
+    // Берём количество типов либо из json_array, либо из loot_types_count_
+    size_t types_count = map_->GetLootTypes().empty() 
+                         ? map_->GetLootTypesCount() 
+                         : map_->GetLootTypes().size();
+
     if (types_count == 0) {
         return;
     }
