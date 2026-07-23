@@ -74,7 +74,9 @@ model::Map ParseMap(const json::value& map_json, double default_speed) {
 
     if (const auto* loot_types_ptr = map_obj.if_contains("lootTypes")) {
         if (loot_types_ptr->is_array()) {
-            map.SetLootTypes(loot_types_ptr->as_array());
+            const auto& arr = loot_types_ptr->as_array();
+            map.SetLootTypes(arr);
+            map.SetLootTypesCount(arr.size());
         }
     }
 
@@ -105,6 +107,16 @@ model::Game LoadGame(const std::filesystem::path& json_path) {
         default_speed = speed_ptr->as_double();
     }
     game.SetDefaultDogSpeed(default_speed);
+
+    if (const auto* loot_gen_ptr = obj.if_contains("lootGeneratorConfig")) {
+        if (loot_gen_ptr->is_object()) {
+            auto loot_obj = loot_gen_ptr->as_object();
+            model::LootGeneratorConfig config;
+            config.period = loot_obj.at("period").as_double();
+            config.probability = loot_obj.at("probability").as_double();
+            game.SetLootGeneratorConfig(config);
+        }
+    }
 
     if (const auto* maps_ptr = obj.if_contains("maps")) {
         if (maps_ptr->is_array()) {
