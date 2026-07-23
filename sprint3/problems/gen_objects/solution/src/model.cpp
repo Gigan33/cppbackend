@@ -125,6 +125,26 @@ void Game::AddMap(Map map) {
     maps_.emplace_back(std::move(map));
 }
 
+std::pair<Token, Player::Id> Game::JoinGame(const std::string& map_id, const std::string& player_name) {
+    const Map* map = FindMap(Map::Id{map_id});
+    if (!map) {
+        throw std::invalid_argument("mapNotFound");
+    }
+
+    auto session = FindGameSession(map->GetId());
+    if (!session) {
+        session = CreateGameSession(map);
+    }
+
+    auto player = players_.CreatePlayer(player_name, session, *map);
+
+    if (loot_generator_) {
+        session->GenerateLoot(0.0, *loot_generator_);
+    }
+
+    return {player->GetToken(), player->GetId()};
+}
+
 void Game::Tick(double dt) {
     for (auto& session : sessions_) {
         session->Tick(dt);
@@ -179,8 +199,8 @@ void GameSession::GenerateLoot(double dt, loot_gen::LootGenerator& generator) {
         std::chrono::duration<double>(dt)
     );
 
-    unsigned int looter_count = dogs_.size();
-    unsigned int current_loot_count = lost_objects_.size();
+    unsigned int looter_count = static_cast<unsigned int>(dogs_.size());
+    unsigned int current_loot_count = static_cast<unsigned int>(lost_objects_.size());
 
     unsigned int loot_to_generate = generator.Generate(time_delta, current_loot_count, looter_count);
 
@@ -188,17 +208,21 @@ void GameSession::GenerateLoot(double dt, loot_gen::LootGenerator& generator) {
         return;
     }
 
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-
     const auto& roads = map_->GetRoads();
     if (roads.empty()) {
         return;
     }
 
-    std::uniform_int_distribution<size_t> road_dist(0, roads.size() - 1);
     size_t types_count = map_->GetLootTypes().size();
-    std::uniform_int_distribution<unsigned int> type_dist(0, types_count > 0 ? types_count - 1 : 0);
+    if (types_count == 0) {
+        return; 
+    }
+
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+
+    std::uniform_int_distribution<size_t> road_dist(0, roads.size() - 1);
+    std::uniform_int_distribution<unsigned int> type_dist(0, static_cast<unsigned int>(types_count - 1));
 
     for (unsigned int i = 0; i < loot_to_generate; ++i) {
         const auto& road = roads[road_dist(gen)];
