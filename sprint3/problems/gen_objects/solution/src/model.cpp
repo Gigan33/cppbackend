@@ -197,7 +197,7 @@ void GameSession::GenerateLoot(double dt, loot_gen::LootGenerator& generator) {
     }
 
     std::uniform_int_distribution<size_t> road_dist(0, roads.size() - 1);
-    size_t types_count = map_->GetLootTypesCount();
+    size_t types_count = map_->GetLootTypes().size();
     std::uniform_int_distribution<unsigned int> type_dist(0, types_count > 0 ? types_count - 1 : 0);
 
     for (unsigned int i = 0; i < loot_to_generate; ++i) {
