@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <stdexcept>
 #include <string_view>
+#include <boost/json.hpp>
 
 #include "loot_generator.h"
 #include "tagged.h"
@@ -228,7 +229,7 @@ private:
 
     double dog_speed_ = 0.0;
     size_t loot_types_count_ = 0;
-    
+
     boost::json::array loot_types_;
 };
 
