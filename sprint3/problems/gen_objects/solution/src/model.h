@@ -442,6 +442,10 @@ public:
 
         auto dog = session->CreateDog(user_name, randomize_spawn_points_);
 
+        if (loot_generator_) {
+            session->GenerateLoot(0.0, *loot_generator_);
+        }
+
         uint32_t player_id = next_player_id_++;
         auto player = std::make_shared<Player>(player_id, session, dog);
         players_.push_back(player);

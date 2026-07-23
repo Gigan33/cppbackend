@@ -1,6 +1,7 @@
 #include "model.h"
 #include <algorithm>
 #include <random>
+#include <stdexcept>
 
 namespace model {
 
@@ -125,26 +126,6 @@ void Game::AddMap(Map map) {
     maps_.emplace_back(std::move(map));
 }
 
-std::pair<Token, Player::Id> Game::JoinGame(const std::string& map_id, const std::string& player_name) {
-    const Map* map = FindMap(Map::Id{map_id});
-    if (!map) {
-        throw std::invalid_argument("mapNotFound");
-    }
-
-    auto session = FindGameSession(map->GetId());
-    if (!session) {
-        session = CreateGameSession(map);
-    }
-
-    auto player = players_.CreatePlayer(player_name, session, *map);
-
-    if (loot_generator_) {
-        session->GenerateLoot(0.0, *loot_generator_);
-    }
-
-    return {player->GetToken(), player->GetId()};
-}
-
 void Game::Tick(double dt) {
     for (auto& session : sessions_) {
         session->Tick(dt);
@@ -154,7 +135,7 @@ void Game::Tick(double dt) {
     }
 }
 
-model::Point2D model::GameSession::GetRandomPosition() {
+Point2D GameSession::GetRandomPosition() {
     if (map_->GetRoads().empty()) {
         return {0.0, 0.0};
     }
@@ -215,7 +196,7 @@ void GameSession::GenerateLoot(double dt, loot_gen::LootGenerator& generator) {
 
     size_t types_count = map_->GetLootTypes().size();
     if (types_count == 0) {
-        return; 
+        return;
     }
 
     static std::random_device rd;
