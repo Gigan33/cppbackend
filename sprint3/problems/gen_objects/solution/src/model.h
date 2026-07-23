@@ -207,6 +207,14 @@ public:
         return dog_speed_;
     }
 
+    void SetLootTypes(boost::json::array loot_types) {
+        loot_types_ = std::move(loot_types);
+    }
+
+    const boost::json::array& GetLootTypes() const noexcept {
+        return loot_types_;
+    }
+
 private:
     using OfficeIdToIndex = std::unordered_map<Office::Id, size_t, util::TaggedHasher<Office::Id>>;
 
@@ -220,6 +228,8 @@ private:
 
     double dog_speed_ = 0.0;
     size_t loot_types_count_ = 0;
+    
+    boost::json::array loot_types_;
 };
 
 class Dog {

@@ -72,6 +72,12 @@ model::Map ParseMap(const json::value& map_json, double default_speed) {
         map.SetDogSpeed(default_speed);
     }
 
+    if (const auto* loot_types_ptr = map_obj.if_contains("lootTypes")) {
+        if (loot_types_ptr->is_array()) {
+            map.SetLootTypes(loot_types_ptr->as_array());
+        }
+    }
+
     ParseRoads(map_obj, map);
     ParseBuildings(map_obj, map);
     ParseOffices(map_obj, map);
