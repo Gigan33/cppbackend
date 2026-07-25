@@ -299,6 +299,26 @@ public:
     void Tick(double dt);
     void GenerateLoot(double dt);
 
+    const std::map<unsigned int, LostObject>& GetLostObjects() const noexcept {
+        return lost_objects_;
+    }
+
+    void SetLootGeneratorConfig(const LootGeneratorConfig& config) {
+        auto base_interval = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::duration<double>(config.period)
+        );
+        loot_generator_ = std::make_unique<loot_gen::LootGenerator>(
+            base_interval, 
+            config.probability,
+            []() { 
+                static std::random_device rd;
+                static std::mt19937 gen(rd());
+                static std::uniform_real_distribution<double> dist(0.0, 1.0);
+                return dist(gen); 
+            }
+        );
+    }
+
 private:
     const Map* map_;
     std::vector<std::shared_ptr<Dog>> dogs_;
