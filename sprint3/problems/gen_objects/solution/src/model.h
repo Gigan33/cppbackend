@@ -445,11 +445,6 @@ public:
         auto player = std::make_shared<Player>(player_id, session, dog);
         players_.push_back(player);
 
-        if (loot_generator_) {
-            double dt = (loot_config_.period > 0.0) ? loot_config_.period : 1.0;
-            session->GenerateLoot(dt, *loot_generator_);
-        }
-
         Token token = tokens_.AddPlayer(player);
         return {token, player_id};
     }
