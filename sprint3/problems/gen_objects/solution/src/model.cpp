@@ -175,11 +175,7 @@ void GameSession::Tick(double dt) {
     }
 }
 
-void GameSession::GenerateLoot(double dt) {
-    if (!loot_generator_) {
-        return;
-    }
-
+void GameSession::GenerateLoot(double dt, loot_gen::LootGenerator& generator) {
     auto time_delta = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::duration<double>(dt)
     );
@@ -187,8 +183,7 @@ void GameSession::GenerateLoot(double dt) {
     unsigned int looter_count = static_cast<unsigned int>(dogs_.size());
     unsigned int current_loot_count = static_cast<unsigned int>(lost_objects_.size());
 
-    // Вызываем у своего собственного генератора
-    unsigned int loot_to_generate = loot_generator_->Generate(time_delta, current_loot_count, looter_count);
+    unsigned int loot_to_generate = generator.Generate(time_delta, current_loot_count, looter_count);
 
     if (loot_to_generate == 0) {
         return;
@@ -199,6 +194,7 @@ void GameSession::GenerateLoot(double dt) {
         return;
     }
 
+    // Берём количество типов либо из json_array, либо из loot_types_count_
     size_t types_count = map_->GetLootTypes().empty() 
                          ? map_->GetLootTypesCount() 
                          : map_->GetLootTypes().size();
