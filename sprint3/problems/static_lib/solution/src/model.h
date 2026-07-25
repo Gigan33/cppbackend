@@ -287,44 +287,44 @@ private:
 
 class GameSession {
 public:
-    explicit GameSession(const Map* map) : map_(map) {}
-    const Map::Id& GetMapId() const noexcept { return map_->GetId(); }
-    const std::vector<std::shared_ptr<Dog>>& GetDogs() const noexcept { return dogs_; }
-    const std::map<unsigned int, LostObject>& GetLostObjects() const noexcept {
-        return lost_objects_;
+    GameSession(const Map* map, const LootGeneratorConfig& config) 
+        : map_(map) {
+        
+        auto base_interval = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::duration<double>(config.period)
+        );
+        loot_generator_ = std::make_unique<loot_gen::LootGenerator>(
+            base_interval, 
+            config.probability,
+            []() { 
+                static std::random_device rd;
+                static std::mt19937 gen(rd());
+                static std::uniform_real_distribution<double> dist(0.0, 1.0);
+                return dist(gen); 
+            }
+        );
     }
 
-    void GenerateLoot(double dt, loot_gen::LootGenerator& generator);
-
-    std::shared_ptr<Dog> CreateDog(const std::string& dog_name, bool randomize_spawn) {
-        uint32_t dog_id = next_dog_id_++;
-        
-        Point2D spawn_pos{0.0, 0.0};
-        if (!map_->GetRoads().empty()) {
-            if (randomize_spawn) {
-                spawn_pos = GetRandomPosition();
-            } else {
-                const auto& first_road = map_->GetRoads().front();
-                spawn_pos.x = static_cast<double>(first_road.GetStart().x);
-                spawn_pos.y = static_cast<double>(first_road.GetStart().y);
+    void Tick(double dt) {
+        for (auto& dog : dogs_) {
+            if (dog) {
+                dog->UpdatePosition(dt, map_);
             }
         }
-        
-        auto dog = std::make_shared<Dog>(dog_name, dog_id, spawn_pos);
-        dogs_.push_back(dog);
-        return dog;
+        if (loot_generator_) {
+            GenerateLoot(dt);
+        }
     }
 
-    void Tick(double dt);
-    
-private:
-    Point2D GetRandomPosition();
+    void GenerateLoot(double dt);
 
+private:
     const Map* map_;
     std::vector<std::shared_ptr<Dog>> dogs_;
     uint32_t next_dog_id_ = 0;
     std::map<unsigned int, LostObject> lost_objects_;
     unsigned int next_loot_id_ = 0;
+    std::unique_ptr<loot_gen::LootGenerator> loot_generator_; 
 };
 
 class Player {
@@ -498,7 +498,7 @@ private:
         if (auto it = map_id_to_session_.find(map->GetId()); it != map_id_to_session_.end()) {
             return it->second;
         }
-        auto session = std::make_shared<GameSession>(map);
+        auto session = std::make_shared<GameSession>(map, loot_config_);
         sessions_.push_back(session);
         map_id_to_session_[map->GetId()] = session;
         return session;
