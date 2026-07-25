@@ -443,7 +443,7 @@ public:
         auto dog = session->CreateDog(user_name, randomize_spawn_points_);
 
         if (loot_generator_) {
-            session->GenerateLoot(loot_config_.period, *loot_generator_);
+            session->GenerateLoot(0.0, *loot_generator_);
         }
 
         uint32_t player_id = next_player_id_++;
