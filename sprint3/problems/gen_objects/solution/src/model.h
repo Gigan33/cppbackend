@@ -439,16 +439,16 @@ public:
         }
 
         auto session = FindOrCreateSession(map_ptr);
-
         auto dog = session->CreateDog(user_name, randomize_spawn_points_);
-
-        if (loot_generator_) {
-            session->GenerateLoot(loot_config_.period, *loot_generator_);
-        }
 
         uint32_t player_id = next_player_id_++;
         auto player = std::make_shared<Player>(player_id, session, dog);
         players_.push_back(player);
+
+        if (loot_generator_) {
+            double dt = (loot_config_.period > 0.0) ? loot_config_.period : 1.0;
+            session->GenerateLoot(dt, *loot_generator_);
+        }
 
         Token token = tokens_.AddPlayer(player);
         return {token, player_id};
