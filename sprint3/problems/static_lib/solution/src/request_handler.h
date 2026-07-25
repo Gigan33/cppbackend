@@ -301,7 +301,7 @@ public:
                 }
 
                 auto session = player->GetSession();
-                const model::Map* map = game_.FindMap(session->GetMapId());
+                const model::Map* map = session->GetMap();
                 double speed = map ? map->GetDogSpeed() : game_.GetDefaultDogSpeed();
 
                 player->GetDog().Move(move_action, speed);
