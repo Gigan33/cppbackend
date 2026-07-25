@@ -8,11 +8,11 @@
 #include <iomanip>
 #include <stdexcept>
 #include <string_view>
+#include <map>
 #include <boost/json.hpp>
 
 #include "loot_generator.h"
 #include "tagged.h"
-#include <map>
 
 namespace model {
 
@@ -235,9 +235,9 @@ private:
 
 class Dog {
 public:
-    Dog(std::string name, uint32_t id, Point2D position)
-        : name_(std::move(name))
-        , id_(id)
+    Dog(uint32_t id, std::string name, Point2D position)
+        : id_(id)
+        , name_(std::move(name))
         , position_(position)
         , speed_({0.0, 0.0})
         , direction_(Direction::NORTH) {}
@@ -270,7 +270,7 @@ public:
         } else if (action == "D") {
             speed_ = {0.0, speed};
             direction_ = Direction::SOUTH;
-        } else if (action == "") {
+        } else if (action.empty()) {
             speed_ = {0.0, 0.0};
         }
     }
@@ -278,8 +278,8 @@ public:
     void UpdatePosition(double dt, const Map* map);
 
 private:
-    std::string name_;
     uint32_t id_;
+    std::string name_;
     Point2D position_;
     Speed2D speed_;
     Direction direction_;
@@ -287,35 +287,16 @@ private:
 
 class GameSession {
 public:
-    GameSession(const Map* map, const LootGeneratorConfig& config) 
-        : map_(map) {
-        
-        auto base_interval = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::duration<double>(config.period)
-        );
-        loot_generator_ = std::make_unique<loot_gen::LootGenerator>(
-            base_interval, 
-            config.probability,
-            []() { 
-                static std::random_device rd;
-                static std::mt19937 gen(rd());
-                static std::uniform_real_distribution<double> dist(0.0, 1.0);
-                return dist(gen); 
-            }
-        );
-    }
+    GameSession(const Map* map, const LootGeneratorConfig& config);
 
-    void Tick(double dt) {
-        for (auto& dog : dogs_) {
-            if (dog) {
-                dog->UpdatePosition(dt, map_);
-            }
-        }
-        if (loot_generator_) {
-            GenerateLoot(dt);
-        }
-    }
+    std::shared_ptr<Dog> CreateDog(const std::string& name, bool randomize_spawn_points);
+    Point2D GetRandomPosition();
 
+    const std::vector<std::shared_ptr<Dog>>& GetDogs() const noexcept { return dogs_; }
+    const std::map<unsigned int, LostObject>& GetLostObjects() const noexcept { return lost_objects_; }
+    const Map* GetMap() const noexcept { return map_; }
+
+    void Tick(double dt);
     void GenerateLoot(double dt);
 
 private:
@@ -439,12 +420,7 @@ public:
         }
 
         auto session = FindOrCreateSession(map_ptr);
-
         auto dog = session->CreateDog(user_name, randomize_spawn_points_);
-
-        if (loot_generator_) {
-            session->GenerateLoot(0.0, *loot_generator_);
-        }
 
         uint32_t player_id = next_player_id_++;
         auto player = std::make_shared<Player>(player_id, session, dog);
@@ -466,21 +442,6 @@ public:
 
     void SetLootGeneratorConfig(LootGeneratorConfig config) {
         loot_config_ = config;
-        
-        auto base_interval = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::duration<double>(config.period)
-        );
-        
-        loot_generator_ = std::make_unique<loot_gen::LootGenerator>(
-            base_interval, 
-            config.probability,
-            []() { 
-                static std::random_device rd;
-                static std::mt19937 gen(rd());
-                static std::uniform_real_distribution<double> dist(0.0, 1.0);
-                return dist(gen); 
-            }
-        );
     }
 
     void SetMapLootJson(const Map::Id& id, std::string json_str) {
@@ -520,7 +481,6 @@ private:
     bool randomize_spawn_points_ = false;
 
     LootGeneratorConfig loot_config_;
-    std::unique_ptr<loot_gen::LootGenerator> loot_generator_;
     std::unordered_map<Map::Id, std::string, util::TaggedHasher<Map::Id>> map_loot_json_;
 };
 

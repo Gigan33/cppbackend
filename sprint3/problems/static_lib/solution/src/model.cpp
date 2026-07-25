@@ -128,11 +128,34 @@ void Game::AddMap(Map map) {
 
 void Game::Tick(double dt) {
     for (auto& session : sessions_) {
-        session->Tick(dt);
-        if (loot_generator_) {
-            session->GenerateLoot(dt, *loot_generator_);
-        }
+        session->Tick(dt); // Генерация лута теперь вызывается внутри session->Tick(dt)
     }
+}
+
+GameSession::GameSession(const Map* map, const LootGeneratorConfig& config)
+    : map_(map) {
+    
+    auto base_interval = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::duration<double>(config.period)
+    );
+    loot_generator_ = std::make_unique<loot_gen::LootGenerator>(
+        base_interval, 
+        config.probability,
+        []() { 
+            static std::random_device rd;
+            static std::mt19937 gen(rd());
+            static std::uniform_real_distribution<double> dist(0.0, 1.0);
+            return dist(gen); 
+        }
+    );
+}
+
+std::shared_ptr<Dog> GameSession::CreateDog(const std::string& name, bool randomize_spawn_points) {
+    Point2D spawn_pos = randomize_spawn_points ? GetRandomPosition() : Point2D{0.0, 0.0};
+    uint32_t dog_id = next_dog_id_++;
+    auto dog = std::make_shared<Dog>(dog_id, name, spawn_pos);
+    dogs_.push_back(dog);
+    return dog;
 }
 
 Point2D GameSession::GetRandomPosition() {
@@ -173,6 +196,9 @@ void GameSession::Tick(double dt) {
             dog->UpdatePosition(dt, map_);
         }
     }
+    if (loot_generator_) {
+        GenerateLoot(dt);
+    }
 }
 
 void GameSession::GenerateLoot(double dt) {
@@ -187,7 +213,6 @@ void GameSession::GenerateLoot(double dt) {
     unsigned int looter_count = static_cast<unsigned int>(dogs_.size());
     unsigned int current_loot_count = static_cast<unsigned int>(lost_objects_.size());
 
-    // Вызываем у своего собственного генератора
     unsigned int loot_to_generate = loot_generator_->Generate(time_delta, current_loot_count, looter_count);
 
     if (loot_to_generate == 0) {
