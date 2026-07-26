@@ -299,10 +299,6 @@ public:
     void Tick(double dt);
     void GenerateLoot(double dt);
 
-    const std::map<unsigned int, LostObject>& GetLostObjects() const noexcept {
-        return lost_objects_;
-    }
-
     void SetLootGeneratorConfig(const LootGeneratorConfig& config) {
         auto base_interval = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::duration<double>(config.period)
@@ -444,6 +440,11 @@ public:
 
     void SetLootGeneratorConfig(LootGeneratorConfig config) {
         loot_config_ = config;
+        for (auto& session : sessions_) {
+            if (session) {
+                session->SetLootGeneratorConfig(config);
+            }
+        }
     }
 
     void SetMapLootJson(const Map::Id& id, std::string json_str) {
