@@ -15,13 +15,11 @@ conan_basic_setup(TARGETS)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-# -----------------------------------------------------------------------------
-# 1. Статическая библиотека модели и доменной логики
-# -----------------------------------------------------------------------------
 add_library(game_model STATIC
     src/model.cpp
     src/json_loader.cpp
     src/loot_generator.cpp
+    src/collision_detector.cpp
 )
 
 target_include_directories(game_model PUBLIC 
@@ -33,9 +31,6 @@ target_link_libraries(game_model PUBLIC
     CONAN_PKG::boost
 )
 
-# -----------------------------------------------------------------------------
-# 2. Исполняемый файл сервера
-# -----------------------------------------------------------------------------
 add_executable(game_server
     src/main.cpp
     src/logger.cpp
@@ -52,9 +47,6 @@ target_link_libraries(game_server
     dl
 )
 
-# -----------------------------------------------------------------------------
-# 3. Юнит-тесты (Catch2)
-# -----------------------------------------------------------------------------
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     enable_testing()
     include(CTest)
