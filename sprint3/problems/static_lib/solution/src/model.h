@@ -430,25 +430,7 @@ public:
         return randomize_spawn_points_;
     }
 
-    std::pair<Token, uint32_t> JoinGame(const std::string& map_id, const std::string& user_name) {
-        auto map_ptr = FindMap(Map::Id{map_id});
-        if (!map_ptr) {
-            throw std::invalid_argument("mapNotFound");
-        }
-        if (user_name.empty()) {
-            throw std::invalid_argument("emptyName");
-        }
-
-        auto session = FindOrCreateSession(map_ptr);
-        auto dog = session->CreateDog(user_name, randomize_spawn_points_);
-
-        uint32_t player_id = next_player_id_++;
-        auto player = std::make_shared<Player>(player_id, session, dog);
-        players_.push_back(player);
-
-        Token token = tokens_.AddPlayer(player);
-        return {token, player_id};
-    }
+    std::pair<Token, uint32_t> JoinGame(const std::string& map_id, const std::string& user_name);
 
     const PlayerTokens& GetTokens() const noexcept { return tokens_; }
 
