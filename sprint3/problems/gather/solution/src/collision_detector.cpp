@@ -1,4 +1,4 @@
-#include "collision-detector.h"
+#include "collision_detector.h"
 
 #include <algorithm>
 #include <cassert>
