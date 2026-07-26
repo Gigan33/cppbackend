@@ -1,4 +1,3 @@
-# Не просто создаём образ, но даём ему имя build
 FROM gcc:11.3 AS build
 
 RUN apt update && \
@@ -12,12 +11,10 @@ COPY conanfile.txt /app/
 RUN mkdir /app/build && cd /app/build && \
     conan install .. --build=missing -s compiler.libcxx=libstdc++11 -s build_type=Release
 
-COPY ./src /app/src
-COPY ./tests /app/tests
-COPY CMakeLists.txt /app/
+COPY . /app/
 
 RUN cd /app/build && \
     cmake -DCMAKE_BUILD_TYPE=Release .. && \
     cmake --build .
 
-ENTRYPOINT ["/app/build/bin/collision_detection_tests"]
+ENTRYPOINT ["/app/build/collision_detection_tests"]
