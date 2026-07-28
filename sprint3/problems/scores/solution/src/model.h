@@ -382,6 +382,7 @@ private:
     std::map<unsigned int, LostObject> lost_objects_;
     unsigned int next_loot_id_ = 0;
     std::unique_ptr<loot_gen::LootGenerator> loot_generator_; 
+    void GenerateAndAddLootItem();
 };
 
 class Player {

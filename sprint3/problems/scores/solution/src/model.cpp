@@ -254,6 +254,57 @@ Point2D GameSession::GetRandomPosition() {
     return {x, y};
 }
 
+void GameSession::GenerateAndAddLootItem() {
+    if (!map_) {
+        return;
+    }
+
+    const auto& roads = map_->GetRoads();
+    if (roads.empty()) {
+        return;
+    }
+
+    size_t types_count = map_->GetLootTypes().empty() 
+                         ? map_->GetLootTypesCount() 
+                         : map_->GetLootTypes().size();
+
+    if (types_count == 0) {
+        return;
+    }
+
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+
+    std::uniform_int_distribution<size_t> road_dist(0, roads.size() - 1);
+    std::uniform_int_distribution<unsigned int> type_dist(0, static_cast<unsigned int>(types_count - 1));
+
+    const auto& road = roads[road_dist(gen)];
+    unsigned int loot_type = type_dist(gen);
+
+    double x = 0.0;
+    double y = 0.0;
+
+    Point start = road.GetStart();
+    Point end = road.GetEnd();
+
+    if (road.IsHorizontal()) {
+        double min_x = std::min(start.x, end.x);
+        double max_x = std::max(start.x, end.x);
+        std::uniform_real_distribution<double> x_dist(min_x, max_x);
+        x = x_dist(gen);
+        y = static_cast<double>(start.y);
+    } else {
+        double min_y = std::min(start.y, end.y);
+        double max_y = std::max(start.y, end.y);
+        std::uniform_real_distribution<double> y_dist(min_y, max_y);
+        x = static_cast<double>(start.x);
+        y = y_dist(gen);
+    }
+
+    unsigned int obj_id = next_loot_id_++;
+    lost_objects_[obj_id] = LostObject{obj_id, loot_type, {x, y}};
+}
+
 void GameSession::Tick(double dt) {
     std::vector<collision_detector::Gatherer> gatherers;
     std::vector<Point2D> start_positions;
@@ -267,7 +318,7 @@ void GameSession::Tick(double dt) {
         gatherers.push_back({
             {start_positions.back().x, start_positions.back().y},
             {dog->GetPosition().x, dog->GetPosition().y},
-            0.6 // Радиус собаки
+            0.6
         });
     }
 
@@ -358,55 +409,8 @@ void GameSession::GenerateLoot(double dt) {
 
     unsigned int loot_to_generate = loot_generator_->Generate(time_delta, current_loot_count, looter_count);
 
-    if (loot_to_generate == 0) {
-        return;
-    }
-
-    const auto& roads = map_->GetRoads();
-    if (roads.empty()) {
-        return;
-    }
-
-    size_t types_count = map_->GetLootTypes().empty() 
-                         ? map_->GetLootTypesCount() 
-                         : map_->GetLootTypes().size();
-
-    if (types_count == 0) {
-        return;
-    }
-
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-
-    std::uniform_int_distribution<size_t> road_dist(0, roads.size() - 1);
-    std::uniform_int_distribution<unsigned int> type_dist(0, static_cast<unsigned int>(types_count - 1));
-
     for (unsigned int i = 0; i < loot_to_generate; ++i) {
-        const auto& road = roads[road_dist(gen)];
-        unsigned int loot_type = type_dist(gen);
-
-        double x = 0.0;
-        double y = 0.0;
-
-        Point start = road.GetStart();
-        Point end = road.GetEnd();
-
-        if (road.IsHorizontal()) {
-            double min_x = std::min(start.x, end.x);
-            double max_x = std::max(start.x, end.x);
-            std::uniform_real_distribution<double> x_dist(min_x, max_x);
-            x = x_dist(gen);
-            y = static_cast<double>(start.y);
-        } else {
-            double min_y = std::min(start.y, end.y);
-            double max_y = std::max(start.y, end.y);
-            std::uniform_real_distribution<double> y_dist(min_y, max_y);
-            x = static_cast<double>(start.x);
-            y = y_dist(gen);
-        }
-
-        unsigned int obj_id = next_loot_id_++;
-        lost_objects_[obj_id] = LostObject{obj_id, loot_type, {x, y}};
+        GenerateAndAddLootItem();
     }
 }
 
