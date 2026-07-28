@@ -165,6 +165,11 @@ public:
             response.body() = std::move(body_str);
         }
 
+        if (auto speed = map->GetDogSpeed()) {
+            result["dogSpeed"] = *speed;
+        }
+        result["bagCapacity"] = map->GetBagCapacity();
+
         response.keep_alive(keep_alive);
         return response;
     }
@@ -255,7 +260,6 @@ public:
                     dog_obj["speed"] = json::array{dog.GetSpeed().ux, dog.GetSpeed().uy};
                     dog_obj["dir"] = dog.GetDirectionString();
 
-                    // === ДОБАВЛЕНО: Сериализация рюкзака собаки ===
                     json::array bag_json;
                     for (const auto& item : dog.GetBag()) {
                         json::object item_obj;
@@ -264,7 +268,8 @@ public:
                         bag_json.push_back(item_obj);
                     }
                     dog_obj["bag"] = bag_json;
-                    // ===============================================
+
+                    dog_obj["score"] = dog.GetScore();
 
                     players_obj[std::to_string(p->GetId())] = dog_obj;
                 }
