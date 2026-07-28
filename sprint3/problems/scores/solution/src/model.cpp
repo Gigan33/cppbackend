@@ -260,13 +260,14 @@ void GameSession::Tick(double dt) {
 
     for (auto& dog : dogs_) {
         if (!dog) continue;
+        
         start_positions.push_back(dog->GetPosition());
         dog->UpdatePosition(dt, map_);
 
         gatherers.push_back({
             {start_positions.back().x, start_positions.back().y},
             {dog->GetPosition().x, dog->GetPosition().y},
-            0.6
+            0.6 // Радиус собаки
         });
     }
 
@@ -308,7 +309,6 @@ void GameSession::Tick(double dt) {
                 if (auto it = lost_objects_.find(item_info.id); it != lost_objects_.end()) {
                     dog->PushToBag({it->second.id, it->second.type});
                     picked_items.insert(item_info.id);
-                    RemoveLostObject(item_info.id);
                 }
             }
         } else if (item_info.type == ProviderItemType::Office) {
@@ -323,8 +323,24 @@ void GameSession::Tick(double dt) {
         }
     }
 
+    for (size_t id : picked_items) {
+        RemoveLostObject(id);
+    }
+
     if (loot_generator_) {
-        GenerateLoot(dt);
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::duration<double>(dt)
+        );
+
+        unsigned count = loot_generator_->Generate(
+            duration, 
+            lost_objects_.size(), 
+            dogs_.size()
+        );
+
+        for (unsigned i = 0; i < count; ++i) {
+            GenerateAndAddLootItem();
+        }
     }
 }
 
