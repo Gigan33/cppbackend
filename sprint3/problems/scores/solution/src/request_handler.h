@@ -166,7 +166,7 @@ public:
         }
 
         if (auto speed = map->GetDogSpeed()) {
-            result["dogSpeed"] = *speed;
+            result["dogSpeed"] = speed;
         }
         result["bagCapacity"] = map->GetBagCapacity();
 
