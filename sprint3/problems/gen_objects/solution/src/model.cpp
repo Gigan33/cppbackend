@@ -185,6 +185,10 @@ void GameSession::GenerateLoot(double dt, loot_gen::LootGenerator& generator) {
 
     unsigned int loot_to_generate = generator.Generate(time_delta, current_loot_count, looter_count);
 
+    if (loot_to_generate == 0 && current_loot_count == 0 && looter_count > 0) {
+        loot_to_generate = 1;
+    }
+
     if (loot_to_generate == 0) {
         return;
     }
@@ -194,7 +198,6 @@ void GameSession::GenerateLoot(double dt, loot_gen::LootGenerator& generator) {
         return;
     }
 
-    // Берём количество типов либо из json_array, либо из loot_types_count_
     size_t types_count = map_->GetLootTypes().empty() 
                          ? map_->GetLootTypesCount() 
                          : map_->GetLootTypes().size();
