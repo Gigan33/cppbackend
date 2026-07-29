@@ -236,6 +236,10 @@ void GameSession::GenerateLoot(double dt) {
     unsigned int current_loot_count = static_cast<unsigned int>(lost_objects_.size());
 
     unsigned int loot_to_generate = loot_generator_->Generate(time_delta, current_loot_count, looter_count);
+    
+    if (loot_to_generate == 0 && current_loot_count == 0 && looter_count > 0) {
+        loot_to_generate = 1;
+    }
 
     if (loot_to_generate == 0) {
         return;
