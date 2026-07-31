@@ -1,0 +1,20 @@
+overload:
+  enabled: false
+
+phantom:
+  address: host.docker.internal:8080   
+  ammofile: ammo.txt
+  ammo_type: uri
+  load_profile:
+    load_type: rps
+    schedule: const(100000, 1m)         
+    ssl: false
+
+autostop:
+  enabled: false  
+
+console:
+  enabled: true
+
+telegraf:
+  enabled: false
