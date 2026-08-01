@@ -41,7 +41,7 @@ SCENARIO_METHOD(Fixture, "Dog Serialization") {
         const auto dog = [] {
             Dog dog{Dog::Id{42}, "Pluto"s, {42.2, 12.5}, 3};
             dog.AddScore(42);
-            CHECK(dog.PutToBag({FoundObject::Id{10}, 2u}));
+            CHECK(dog.PutToBag({10u, 2u}));
             dog.SetDirection(Direction::EAST);
             dog.SetSpeed({2.3, -1.2});
             return dog;

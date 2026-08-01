@@ -330,7 +330,7 @@ void GameSession::Tick(double dt) {
         provider_items.push_back({
             ProviderItemType::Item,
             id,
-            {lost_obj.position.x, lost_obj.position.y},
+            {lost_obj.pos.x, lost_obj.pos.y},
             0.0
         });
     }

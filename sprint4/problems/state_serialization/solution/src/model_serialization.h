@@ -27,7 +27,7 @@ namespace model {
 
 template <typename Archive>
 void serialize(Archive& ar, FoundObject& obj, [[maybe_unused]] const unsigned version) {
-    ar & (*obj.id);
+    ar & obj.id;
     ar & obj.type;
 }
 
@@ -82,7 +82,7 @@ private:
     size_t bag_capacity_ = 0;
     geom::Vec2D speed_;
     model::Direction direction_ = model::Direction::NORTH;
-    model::Score score_ = 0;
+    uint32_t score_ = 0;
     model::Dog::BagContent bag_content_;
 };
 

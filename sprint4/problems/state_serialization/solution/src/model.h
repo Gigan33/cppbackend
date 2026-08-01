@@ -34,7 +34,7 @@ struct Point {
 struct LostObject {
     unsigned int id = 0;
     unsigned int type = 0;
-    geom::Point2D pos; // Используем pos вместо position для единообразия с сериализацией
+    geom::Point2D pos;
 };
 
 struct LootGeneratorConfig {
@@ -45,6 +45,8 @@ struct LootGeneratorConfig {
 struct FoundObject {
     size_t id;
     size_t type;
+
+    bool operator==(const FoundObject&) const = default;
 };
 
 enum class Direction {
@@ -458,13 +460,13 @@ public:
         std::string token_str = GenerateToken();
         Token token{token_str};
         token_to_player_[token] = std::move(player);
-        player_to_token_[player] = token;
+        player_to_token_.emplace(player, token);
         return token;
     }
 
     void AddPlayerWithToken(std::shared_ptr<Player> player, const Token& token) {
         token_to_player_[token] = player;
-        player_to_token_[player] = token;
+        player_to_token_.emplace(player, token);
     }
 
     std::shared_ptr<Player> FindPlayerByToken(const Token& token) const {
