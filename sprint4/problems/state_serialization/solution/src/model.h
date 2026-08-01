@@ -12,6 +12,7 @@
 #include <map>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 
 #include <boost/json.hpp>
 #include <boost/archive/text_oarchive.hpp>

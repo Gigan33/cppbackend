@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <unordered_set>
 
+using geom::Point2D;
+
 namespace model {
 
 namespace {
@@ -69,13 +71,13 @@ bool IsPointOnRoad(const Point2D& p, const Road& road) {
 }
 
 void Dog::UpdatePosition(double dt, const Map* map) {
-    if (!map || (speed_.ux == 0.0 && speed_.uy == 0.0)) {
+    if (!map || (speed_.x == 0.0 && speed_.y == 0.0)) {
         return; 
     }
 
     Point2D next_pos;
-    next_pos.x = position_.x + speed_.ux * dt;
-    next_pos.y = position_.y + speed_.uy * dt;
+    next_pos.x = position_.x + speed_.x * dt;
+    next_pos.y = position_.y + speed_.y * dt;
 
     std::vector<const Road*> current_roads;
     for (const auto& road : map->GetRoads()) {
@@ -109,37 +111,37 @@ void Dog::UpdatePosition(double dt, const Map* map) {
     double max_allowed_x = next_pos.x;
     double max_allowed_y = next_pos.y;
 
-    if (speed_.ux > 0) {
+    if (speed_.x > 0) {
         double limit = -1e9;
         for (const auto* road : current_roads) {
             limit = std::max(limit, GetRoadBounds(*road).max_x);
         }
         max_allowed_x = std::min(next_pos.x, limit);
-        speed_.ux = 0.0;
+        speed_.x = 0.0;
     } 
-    else if (speed_.ux < 0) {
+    else if (speed_.x < 0) {
         double limit = 1e9;
         for (const auto* road : current_roads) {
             limit = std::min(limit, GetRoadBounds(*road).min_x);
         }
         max_allowed_x = std::max(next_pos.x, limit);
-        speed_.ux = 0.0;
+        speed_.x = 0.0;
     } 
-    else if (speed_.uy > 0) {
+    else if (speed_.y > 0) {
         double limit = -1e9;
         for (const auto* road : current_roads) {
             limit = std::max(limit, GetRoadBounds(*road).max_y);
         }
         max_allowed_y = std::min(next_pos.y, limit);
-        speed_.uy = 0.0;
+        speed_.y = 0.0;
     } 
-    else if (speed_.uy < 0) {
+    else if (speed_.y < 0) {
         double limit = 1e9;
         for (const auto* road : current_roads) {
             limit = std::min(limit, GetRoadBounds(*road).min_y);
         }
         max_allowed_y = std::max(next_pos.y, limit);
-        speed_.uy = 0.0;
+        speed_.y = 0.0;
     }
 
     position_.x = max_allowed_x;
