@@ -28,6 +28,10 @@ inline constexpr std::string_view GAME_STATE_ENDPOINT = "/api/v1/game/state";
 inline constexpr std::string_view ACTION_ENDPOINT = "/api/v1/game/player/action";
 inline constexpr std::string_view TICK_ENDPOINT = "/api/v1/game/tick";
 
+inline boost::beast::string_view ToBoostSV(std::string_view sv) noexcept {
+    return {sv.data(), sv.size()};
+}
+
 inline std::string UrlDecode(std::string_view encoded) {
     std::string result;
     result.reserve(encoded.size());
@@ -88,21 +92,36 @@ public:
     RequestHandler(const RequestHandler&) = delete;
     RequestHandler& operator=(const RequestHandler&) = delete;
 
-    StringResponse MakeStringResponse(http::status status, std::string_view body, unsigned version, bool keep_alive,
-                                      std::string_view content_type = "application/json",
-                                      const std::vector<std::pair<std::string, std::string>>& custom_headers = {},
-                                      std::string_view cache_control = "") {
+    StringResponse MakeStringResponse(
+        http::status status, 
+        std::string_view body, 
+        unsigned version, 
+        bool keep_alive,
+        std::string_view content_type = "application/json",
+        const std::vector<std::pair<std::string, std::string>>& custom_headers = {},
+        std::string_view cache_control = "") 
+    {
+        // Маленький inline-конвертер внутри метода
+        auto to_beast_sv = [](std::string_view sv) noexcept {
+            return boost::beast::string_view{sv.data(), sv.size()};
+        };
+
         StringResponse response(status, version);
-        response.set(http::field::content_type, content_type);
+
+        response.set(http::field::content_type, to_beast_sv(content_type));
+
         if (!cache_control.empty()) {
-            response.set(http::field::cache_control, cache_control);
+            response.set(http::field::cache_control, to_beast_sv(cache_control));
         }
+
         for (const auto& [header, value] : custom_headers) {
             response.set(header, value);
         }
+
         response.body() = std::string(body);
         response.content_length(response.body().size());
         response.keep_alive(keep_alive);
+
         return response;
     }
 
@@ -257,7 +276,7 @@ public:
                     const auto& dog = p->GetDog();
 
                     dog_obj["pos"] = json::array{dog.GetPosition().x, dog.GetPosition().y};
-                    dog_obj["speed"] = json::array{dog.GetSpeed().ux, dog.GetSpeed().uy};
+                    dog_obj["speed"] = json::array{dog.GetSpeed().x, dog.GetSpeed().y};
                     dog_obj["dir"] = dog.GetDirectionString();
 
                     json::array bag_json;
@@ -280,7 +299,7 @@ public:
                 for (const auto& [obj_id, lost_obj] : current_session->GetLostObjects()) {
                     json::object item_obj;
                     item_obj["type"] = lost_obj.type;
-                    item_obj["pos"] = json::array{lost_obj.position.x, lost_obj.position.y};
+                    item_obj["pos"] = json::array{lost_obj.pos.x, lost_obj.pos.y};
 
                     lost_objects_obj[std::to_string(obj_id)] = item_obj;
                 }
@@ -483,7 +502,7 @@ private:
             return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Authorization header is required", version, keep_alive);
         }
 
-        std::string_view auth_header = auth_it->value();
+        std::string_view auth_header = {auth_it->value().data(), auth_it->value().size()};
         std::string_view bearer_prefix = "Bearer ";
         if (auth_header.rfind(bearer_prefix, 0) != 0) {
             return MakeJoinErrorResponse(http::status::unauthorized, "invalidToken", "Invalid token", version, keep_alive);
@@ -599,7 +618,8 @@ private:
         ss << file.rdbuf();
         
         StringResponse response(http::status::ok, version);
-        response.set(http::field::content_type, GetMimeType(target_path));
+        auto mime = GetMimeType(target_path);
+        response.set(http::field::content_type, boost::beast::string_view{mime.data(), mime.size()});   
         response.body() = ss.str();
         response.content_length(response.body().size());
         response.keep_alive(keep_alive);
