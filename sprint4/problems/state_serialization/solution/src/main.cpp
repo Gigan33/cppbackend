@@ -43,6 +43,8 @@ struct Args {
     std::string config_file;
     std::string www_root;
     bool randomize_spawn_points = false;
+    std::string state_file;
+    std::optional<uint64_t> save_state_period;
 };
 
 std::optional<Args> ParseCommandLine(int argc, char* argv[]) {
@@ -57,6 +59,8 @@ std::optional<Args> ParseCommandLine(int argc, char* argv[]) {
         ("config-file,c", po::value<std::string>(&args.config_file)->value_name("file"s), "set config file path")
         ("www-root,w", po::value<std::string>(&args.www_root)->value_name("dir"s), "set static files root")
         ("randomize-spawn-points", po::bool_switch(&args.randomize_spawn_points), "spawn dogs at random positions");
+        ("state-file", po::value<std::string>(&args.state_file)->value_name("file"s), "set state file path")
+        ("save-state-period", po::value<uint64_t>()->value_name("milliseconds"s), "set state save period");
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -76,6 +80,10 @@ std::optional<Args> ParseCommandLine(int argc, char* argv[]) {
 
     if (vm.count("tick-period"s)) {
         args.tick_period = vm["tick-period"s].as<uint64_t>();
+    }
+
+    if (vm.count("save-state-period"s)) {
+        args.save_state_period = vm["save-state-period"s].as<uint64_t>();
     }
 
     return args;
