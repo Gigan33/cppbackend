@@ -429,9 +429,10 @@ public:
     }
 
     void RestoreDog(std::shared_ptr<Dog> dog) {
-        // Просто добавляем собаку в map/vector сессии по её ТЕКУЩЕМУ dog->GetId(), 
-        // НЕ генерируя новый ID!
-        dogs_.push_back(dog); 
+        dogs_.push_back(dog);
+        if (*dog->GetId() >= next_dog_id_) {
+            next_dog_id_ = *dog->GetId() + 1;
+        }
     }
 
 private:
@@ -480,13 +481,17 @@ public:
     Token AddPlayer(std::shared_ptr<Player> player) {
         std::string token_str = GenerateToken();
         Token token{token_str};
-        token_to_player_[token] = std::move(player);
-        player_to_token_.emplace(player, token);
+        
+        // Используем emplace вместо operator[]
+        token_to_player_.emplace(token, player);
+        player_to_token_.emplace(std::move(player), token);
+        
         return token;
     }
 
     void AddPlayerWithToken(std::shared_ptr<Player> player, Token token) {
-        token_to_player_[token] = player;
+        // emplace не требует конструктора по умолчанию
+        token_to_player_.emplace(token, player);
         player_to_token_.emplace(std::move(player), std::move(token));
     }
 
