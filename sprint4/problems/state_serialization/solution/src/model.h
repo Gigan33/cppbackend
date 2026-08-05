@@ -428,6 +428,12 @@ public:
         lost_objects_.erase(id);
     }
 
+    void RestoreDog(std::shared_ptr<Dog> dog) {
+        // Просто добавляем собаку в map/vector сессии по её ТЕКУЩЕМУ dog->GetId(), 
+        // НЕ генерируя новый ID!
+        dogs_.push_back(dog); 
+    }
+
 private:
     const Map* map_;
     std::vector<std::shared_ptr<Dog>> dogs_;

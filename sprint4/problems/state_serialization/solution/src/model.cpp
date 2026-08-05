@@ -241,7 +241,7 @@ void Game::RestoreState(const serialization::SavedState& state) {
         // Восстанавливаем собак
         for (const auto& dog_repr : session_repr.GetDogs()) {
             auto dog = std::make_shared<Dog>(dog_repr.Restore());
-            session->AddDog(dog); 
+            session->RestoreDog(dog); 
         }
 
         // Восстанавливаем предметы
