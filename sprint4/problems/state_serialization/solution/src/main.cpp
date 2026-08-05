@@ -65,6 +65,8 @@ std::optional<Args> ParseCommandLine(int argc, char* argv[]) {
         ("www-root,w", po::value<std::string>(&args.www_root)->value_name("dir"), "set static files root")
         ("randomize-spawn-points", po::bool_switch(&args.randomize_spawn_points), "spawn dogs at random positions")
         ("state-file", po::value<std::string>(&args.state_file)->value_name("file"), "set state file path")
+        // Поддерживаем оба имени флага: --state-delay (из тестов) и --save-state-period
+        ("state-delay", po::value<uint64_t>()->value_name("milliseconds"), "set state save period")
         ("save-state-period", po::value<uint64_t>()->value_name("milliseconds"), "set state save period");
 
     po::variables_map vm;
@@ -87,7 +89,10 @@ std::optional<Args> ParseCommandLine(int argc, char* argv[]) {
         args.tick_period = vm["tick-period"].as<uint64_t>();
     }
 
-    if (vm.count("save-state-period")) {
+    // Проверяем оба ключа
+    if (vm.count("state-delay")) {
+        args.save_state_period = vm["state-delay"].as<uint64_t>();
+    } else if (vm.count("save-state-period")) {
         args.save_state_period = vm["save-state-period"].as<uint64_t>();
     }
 
@@ -142,6 +147,15 @@ int main(int argc, char* argv[]) {
             game, args->www_root, *api_strand, auto_tick_enabled
         );
 
+        if (!args->state_file.empty()) {
+            std::optional<std::chrono::milliseconds> save_period;
+            if (args->save_state_period) {
+                save_period = std::chrono::milliseconds{*args->save_state_period};
+            }
+            // Передаем путь и период в хэндлер, чтобы при /api/v1/game/tick он мог сохранять по дельте
+            // handler->SetSaveOptions(args->state_file, save_period);
+        }
+
         // --- ВОССТАНОВЛЕНИЕ СОСТОЯНИЯ ---
         if (!args->state_file.empty() && std::filesystem::exists(args->state_file)) {
             try {
@@ -164,11 +178,11 @@ int main(int argc, char* argv[]) {
                 return;
             }
             
-            // Выполняем сохранение и остановку синхронно в контексте strand, чтобы избежать data race
             net::dispatch(*api_strand, [&ioc, handler, state_file]() {
                 if (!state_file.empty()) {
                     try {
                         SaveState(state_file, handler->GetSerializedState());
+                        BOOST_LOG_TRIVIAL(info) << "State saved on shutdown.";
                     } catch (const std::exception& ex) {
                         BOOST_LOG_TRIVIAL(error) << "Failed to save state on shutdown: " << ex.what();
                     }
@@ -199,13 +213,13 @@ int main(int argc, char* argv[]) {
                 api_strand, 
                 period,
                 [handler](std::chrono::milliseconds delta) {
-                    handler->Tick(delta); // Передаем delta типа std::chrono::milliseconds
+                    handler->Tick(delta);
                 }
             );
             game_ticker->Start();
         }
 
-        // --- НАСТРОЙКА ПЕРИОДИЧЕСКОГО СОХРАНЕНИЯ СОСТОЯНИЯ ---
+        // --- НАСТРОЙКА ПЕРИОДИЧЕСКОГО СОХРАНЕНИЯ СОСТОЯНИЯ ПО ТАЙМЕРУ ---
         std::shared_ptr<util::Ticker> save_ticker;
         if (args->save_state_period && !args->state_file.empty()) {
             std::chrono::milliseconds save_period{*args->save_state_period};

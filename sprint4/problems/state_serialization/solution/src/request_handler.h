@@ -5,7 +5,9 @@
 
 #include <boost/json.hpp>
 #include <boost/asio/dispatch.hpp>
+#include <boost/beast/http/file_body.hpp>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <sstream>
 #include <cctype>
@@ -83,15 +85,41 @@ inline std::string_view GetMimeType(const fs::path& filepath) {
     return "application/octet-stream";
 }
 
+// Проверка защиты от выходя за пределы корневой папки (Path Traversal Protection)
+inline bool IsSubpath(fs::path path, fs::path base) {
+    path = fs::weakly_canonical(path);
+    base = fs::weakly_canonical(base);
+
+    for (auto b = base.begin(), p = path.begin(); b != base.end(); ++b, ++p) {
+        if (p == path.end() || *p != *b) {
+            return false;
+        }
+    }
+    return true;
+}
+
 class RequestHandler {
 public:
     using Strand = boost::asio::strand<boost::asio::io_context::executor_type>;
+    using SaveStateFn = std::function<void(const std::string&, const serialization::SavedState&)>;
 
-    explicit RequestHandler(model::Game& game, std::string static_dir, Strand api_strand, bool auto_tick_enabled)
+    explicit RequestHandler(
+        model::Game& game, 
+        std::string static_dir, 
+        Strand api_strand, 
+        bool auto_tick_enabled,
+        std::string state_file = {}, 
+        std::optional<std::chrono::milliseconds> save_period = std::nullopt,
+        SaveStateFn save_state_fn = {}
+    )
         : game_{game}
         , static_dir_{std::move(static_dir)}
         , api_strand_{std::move(api_strand)}
-        , auto_tick_enabled_{auto_tick_enabled} {
+        , auto_tick_enabled_{auto_tick_enabled}
+        , state_file_{std::move(state_file)}
+        , save_period_{save_period}
+        , save_state_fn_{std::move(save_state_fn)}
+    {
     }
 
     RequestHandler(const RequestHandler&) = delete;
@@ -109,6 +137,14 @@ public:
         net::dispatch(api_strand_, [this, delta_time]() {
             double dt_seconds = delta_time.count() / 1000.0;
             game_.Tick(dt_seconds);
+
+            if (save_period_ && !state_file_.empty() && save_state_fn_) {
+                time_since_last_save_ += delta_time;
+                if (time_since_last_save_ >= *save_period_) {
+                    save_state_fn_(state_file_, game_.GetSerializedState());
+                    time_since_last_save_ = std::chrono::milliseconds{0};
+                }
+            }
         });
     }
 
@@ -127,15 +163,11 @@ public:
         const std::vector<std::pair<std::string, std::string>>& custom_headers = {},
         std::string_view cache_control = "") 
     {
-        auto to_beast_sv = [](std::string_view sv) noexcept {
-            return boost::beast::string_view{sv.data(), sv.size()};
-        };
-
         StringResponse response(status, version);
-        response.set(http::field::content_type, to_beast_sv(content_type));
+        response.set(http::field::content_type, ToBoostSV(content_type));
 
         if (!cache_control.empty()) {
-            response.set(http::field::cache_control, to_beast_sv(cache_control));
+            response.set(http::field::cache_control, ToBoostSV(cache_control));
         }
 
         for (const auto& [header, value] : custom_headers) {
@@ -311,7 +343,6 @@ public:
                         bag_json.push_back(item_obj);
                     }
                     dog_obj["bag"] = bag_json;
-
                     dog_obj["score"] = dog.GetScore();
 
                     players_obj[std::to_string(p->GetId())] = dog_obj;
@@ -492,22 +523,65 @@ public:
             return boost::asio::dispatch(api_strand_, std::move(handle));
         } 
         else {
-            StringResponse response;
             if (req.method() != http::verb::get && req.method() != http::verb::head) {
-                response = MakeStringResponse(http::status::method_not_allowed, "Method Not Allowed", 
-                                              req.version(), req.keep_alive(), "text/plain", 
-                                              {{"Allow", "GET, HEAD"}});
-            } else if (static_dir_.empty()) {
-                response = MakeStaticBadRequestResponse(req.version(), req.keep_alive());
-            } else {
-                std::string relative_path = decoded_target;
-                if (!relative_path.empty() && relative_path[0] == '/') {
-                    relative_path.erase(0, 1);
-                }
-                fs::path full_path = fs::path(static_dir_) / relative_path;
-                response = MakeFileResponse(full_path, req.version(), req.keep_alive());
+                StringResponse response = MakeStringResponse(http::status::method_not_allowed, "Method Not Allowed", 
+                                                             req.version(), req.keep_alive(), "text/plain", 
+                                                             {{"Allow", "GET, HEAD"}});
+                return send(std::move(response));
+            } 
+
+            if (static_dir_.empty()) {
+                return send(MakeStaticBadRequestResponse(req.version(), req.keep_alive()));
+            } 
+
+            std::string relative_path = decoded_target;
+            if (!relative_path.empty() && relative_path[0] == '/') {
+                relative_path.erase(0, 1);
             }
-            send(std::move(response));
+            
+            fs::path base_path = fs::canonical(static_dir_);
+            fs::path full_path = fs::weakly_canonical(base_path / relative_path);
+
+            if (!IsSubpath(full_path, base_path)) {
+                return send(MakeStaticBadRequestResponse(req.version(), req.keep_alive()));
+            }
+
+            if (fs::is_directory(full_path)) {
+                full_path /= "index.html";
+            }
+
+            if (!fs::exists(full_path)) {
+                return send(MakeStaticNotFoundResponse(req.version(), req.keep_alive()));
+            }
+
+            http::file_body::value_type body;
+            boost::system::error_code ec;
+            body.open(full_path.string().c_str(), beast::file_mode::read, ec);
+
+            if (ec) {
+                return send(MakeStaticNotFoundResponse(req.version(), req.keep_alive()));
+            }
+
+            auto const size = body.size();
+            http::response<http::file_body> res{
+                std::piecewise_construct,
+                std::make_tuple(std::move(body)),
+                std::make_tuple(http::status::ok, req.version())};
+
+            auto mime = GetMimeType(full_path);
+            res.set(http::field::content_type, ToBoostSV(mime));
+            res.content_length(size);
+            res.keep_alive(req.keep_alive());
+
+            if (req.method() == http::verb::head) {
+                StringResponse head_res(http::status::ok, req.version());
+                head_res.set(http::field::content_type, ToBoostSV(mime));
+                head_res.content_length(size);
+                head_res.keep_alive(req.keep_alive());
+                return send(std::move(head_res));
+            }
+
+            return send(std::move(res));
         }
     }
 
@@ -516,6 +590,11 @@ private:
     std::string static_dir_;
     Strand api_strand_;
     bool auto_tick_enabled_;
+
+    std::string state_file_;
+    std::optional<std::chrono::milliseconds> save_period_;
+    SaveStateFn save_state_fn_;
+    std::chrono::milliseconds time_since_last_save_{0};
 
     template <typename Body, typename Allocator, typename Fn>
     StringResponse ExecuteAuthorized(const http::request<Body, http::basic_fields<Allocator>>& req, 
@@ -619,34 +698,6 @@ private:
         response.body() = "File not found";
         response.content_length(response.body().size());
         response.keep_alive(keep_alive);
-        return response;
-    }
-
-    StringResponse MakeFileResponse(const fs::path& filepath, unsigned version, bool keep_alive) {
-        fs::path target_path = filepath;
-        if (fs::is_directory(filepath)) {
-            target_path = filepath / "index.html";
-        }
-        
-        if (!fs::exists(target_path)) {
-            return MakeStaticNotFoundResponse(version, keep_alive);
-        }
-        
-        std::ifstream file(target_path, std::ios::binary);
-        if (!file.is_open()) {
-            return MakeStaticNotFoundResponse(version, keep_alive);
-        }
-        
-        std::stringstream ss;
-        ss << file.rdbuf();
-        
-        StringResponse response(http::status::ok, version);
-        auto mime = GetMimeType(target_path);
-        response.set(http::field::content_type, boost::beast::string_view{mime.data(), mime.size()});   
-        response.body() = ss.str();
-        response.content_length(response.body().size());
-        response.keep_alive(keep_alive);
-        
         return response;
     }
 
