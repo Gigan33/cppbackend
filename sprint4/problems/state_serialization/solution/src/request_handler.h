@@ -1,13 +1,17 @@
 #pragma once
 #include "http_server.h"
 #include "model.h"
+#include "model_serialization.h"
+
 #include <boost/json.hpp>
+#include <boost/asio/dispatch.hpp>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <cctype>
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
@@ -16,6 +20,7 @@ namespace http_handler {
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace json = boost::json;
+namespace net = boost::asio;
 
 using StringResponse = http::response<http::string_body>;
 
@@ -92,6 +97,27 @@ public:
     RequestHandler(const RequestHandler&) = delete;
     RequestHandler& operator=(const RequestHandler&) = delete;
 
+    serialization::SavedState GetSerializedState() const {
+        serialization::SavedState state;
+        net::dispatch(api_strand_, [this, &state]() {
+            state = game_.GetSerializedState();
+        });
+        return state;
+    }
+
+    void Tick(std::chrono::milliseconds delta_time) {
+        net::dispatch(api_strand_, [this, delta_time]() {
+            double dt_seconds = delta_time.count() / 1000.0;
+            game_.Tick(dt_seconds);
+        });
+    }
+
+    void RestoreState(const serialization::SavedState& state) {
+        net::dispatch(api_strand_, [this, &state]() {
+            game_.RestoreState(state);
+        });
+    }
+
     StringResponse MakeStringResponse(
         http::status status, 
         std::string_view body, 
@@ -101,13 +127,11 @@ public:
         const std::vector<std::pair<std::string, std::string>>& custom_headers = {},
         std::string_view cache_control = "") 
     {
-        // Маленький inline-конвертер внутри метода
         auto to_beast_sv = [](std::string_view sv) noexcept {
             return boost::beast::string_view{sv.data(), sv.size()};
         };
 
         StringResponse response(status, version);
-
         response.set(http::field::content_type, to_beast_sv(content_type));
 
         if (!cache_control.empty()) {
@@ -176,18 +200,18 @@ public:
         result["buildings"] = SerializeBuildings(map);
         result["offices"] = SerializeOffices(map);
         result["lootTypes"] = map->GetLootTypes();
-        
+
+        if (auto speed = map->GetDogSpeed()) {
+            result["dogSpeed"] = speed;
+        }
+        result["bagCapacity"] = map->GetBagCapacity();
+
         std::string body_str = json::serialize(result);
         response.content_length(body_str.size());
 
         if (send_body) {
             response.body() = std::move(body_str);
         }
-
-        if (auto speed = map->GetDogSpeed()) {
-            result["dogSpeed"] = speed;
-        }
-        result["bagCapacity"] = map->GetBagCapacity();
 
         response.keep_alive(keep_alive);
         return response;
@@ -385,8 +409,7 @@ public:
                 throw std::invalid_argument("Invalid timeDelta type");
             }
 
-            double dt = delta_ms / 1000.0;
-            game_.Tick(dt);
+            Tick(std::chrono::milliseconds(static_cast<int64_t>(delta_ms)));
 
             return MakeStringResponse(http::status::ok, 
                                       "{}", 
@@ -442,9 +465,9 @@ public:
                             error_obj["message"] = "Invalid endpoint";
                             
                             response = MakeStringResponse(http::status::bad_request, 
-                                                           json::serialize(error_obj), 
-                                                           req.version(), req.keep_alive(), 
-                                                           "application/json", {}, "no-cache");
+                                                          json::serialize(error_obj), 
+                                                          req.version(), req.keep_alive(), 
+                                                          "application/json", {}, "no-cache");
                         } else {
                             response = HandleTickRequest(req, req.version(), req.keep_alive());
                         }

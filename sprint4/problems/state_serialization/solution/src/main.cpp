@@ -1,22 +1,27 @@
 #include "sdk.h"
+#include "model_serialization.h"
 #include "json_loader.h"
 #include "request_handler.h"
 #include "ticker.h"
 #include "http_server.h"
 #include "logger.h"
 #include "logging_handler.h"
+
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <boost/program_options.hpp>
+
 #include <iostream>
 #include <thread>
 #include <vector>
 #include <memory>
 #include <chrono>
 #include <optional>
+#include <filesystem>
+#include <fstream>
 
 using namespace std::literals;
 namespace net = boost::asio;
@@ -89,6 +94,29 @@ std::optional<Args> ParseCommandLine(int argc, char* argv[]) {
     return args;
 }
 
+void SaveState(const std::string& state_file_path, const serialization::SavedState& state) {
+    if (state_file_path.empty()) {
+        return;
+    }
+    
+    std::filesystem::path target_path{state_file_path};
+
+    if (target_path.has_parent_path()) {
+        std::filesystem::create_directories(target_path.parent_path());
+    }
+
+    std::filesystem::path temp_path = target_path;
+    temp_path += ".tmp";
+
+    {
+        std::ofstream ofs(temp_path, std::ios::binary);
+        boost::archive::text_oarchive oa(ofs);
+        oa << state;
+    }
+
+    std::filesystem::rename(temp_path, target_path);
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -106,23 +134,55 @@ int main(int argc, char* argv[]) {
         const unsigned num_threads = std::thread::hardware_concurrency();
         net::io_context ioc(num_threads);
 
+        auto api_strand = std::make_shared<net::strand<net::io_context::executor_type>>(net::make_strand(ioc));
+
+        bool auto_tick_enabled = args->tick_period.has_value();
+
+        auto handler = std::make_shared<http_handler::RequestHandler>(
+            game, args->www_root, *api_strand, auto_tick_enabled
+        );
+
+        // --- ВОССТАНОВЛЕНИЕ СОСТОЯНИЯ ---
+        if (!args->state_file.empty() && std::filesystem::exists(args->state_file)) {
+            try {
+                std::ifstream ifs(args->state_file, std::ios::binary);
+                boost::archive::text_iarchive ia(ifs);
+                serialization::SavedState saved_state;
+                ia >> saved_state;
+
+                handler->RestoreState(saved_state);
+                BOOST_LOG_TRIVIAL(info) << "State successfully restored from " << args->state_file;
+            } catch (const std::exception& ex) {
+                BOOST_LOG_TRIVIAL(error) << "Failed to restore state: " << ex.what();
+            }
+        }
+
+        // --- ПЕРЕХВАТ СИГНАЛОВ И СОХРАНЕНИЕ ПРИ ВЫХОДЕ ---
         net::signal_set signals(ioc, SIGINT, SIGTERM);
-        signals.async_wait([&ioc](const boost::system::error_code&, int) {
-            boost::json::value exit_data{{"code", 0}};
-            BOOST_LOG_TRIVIAL(info) << boost::log::add_value(additional_data, exit_data)
-                                    << "server exited";
-            ioc.stop();
+        signals.async_wait([&ioc, api_strand, handler, state_file = args->state_file](const boost::system::error_code& ec, int) {
+            if (ec) {
+                return;
+            }
+            
+            // Выполняем сохранение и остановку синхронно в контексте strand, чтобы избежать data race
+            net::dispatch(*api_strand, [&ioc, handler, state_file]() {
+                if (!state_file.empty()) {
+                    try {
+                        SaveState(state_file, handler->GetSerializedState());
+                    } catch (const std::exception& ex) {
+                        BOOST_LOG_TRIVIAL(error) << "Failed to save state on shutdown: " << ex.what();
+                    }
+                }
+
+                boost::json::value exit_data{{"code", 0}};
+                BOOST_LOG_TRIVIAL(info) << boost::log::add_value(additional_data, exit_data)
+                                        << "server exited";
+                ioc.stop();
+            });
         });
 
         const auto address = net::ip::make_address("0.0.0.0");
         constexpr unsigned short port = 8080;
-
-        auto api_strand = std::make_shared<net::strand<net::io_context::executor_type>>(net::make_strand(ioc));
-
-        bool auto_tick_enabled = args->tick_period.has_value();
-        auto handler = std::make_shared<http_handler::RequestHandler>(
-            game, args->www_root, *api_strand, auto_tick_enabled
-        );
 
         http_handler::LoggingHandler<http_handler::RequestHandler> logging_handler(*handler);
 
@@ -130,25 +190,45 @@ int main(int argc, char* argv[]) {
             logging_handler(std::forward<decltype(req)>(req), std::forward<decltype(send)>(send));
         });
 
-        std::shared_ptr<util::Ticker> ticker;
+        // --- НАСТРОЙКА ИГРОВОГО ТИКЕРА (АВТО-ТИК) ---
+        std::shared_ptr<util::Ticker> game_ticker;
         if (args->tick_period) {
             std::chrono::milliseconds period{*args->tick_period};
-            ticker = std::make_shared<util::Ticker>(
+            
+            game_ticker = std::make_shared<util::Ticker>(
                 api_strand, 
                 period,
-                [&game](std::chrono::milliseconds delta) {
-                    double dt = delta.count() / 1000.0;
-                    game.Tick(dt);
+                [handler](std::chrono::milliseconds delta) {
+                    handler->Tick(delta); // Передаем delta типа std::chrono::milliseconds
                 }
             );
-            ticker->Start();
+            game_ticker->Start();
+        }
+
+        // --- НАСТРОЙКА ПЕРИОДИЧЕСКОГО СОХРАНЕНИЯ СОСТОЯНИЯ ---
+        std::shared_ptr<util::Ticker> save_ticker;
+        if (args->save_state_period && !args->state_file.empty()) {
+            std::chrono::milliseconds save_period{*args->save_state_period};
+
+            save_ticker = std::make_shared<util::Ticker>(
+                api_strand,
+                save_period,
+                [handler, state_file = args->state_file](std::chrono::milliseconds) {
+                    try {
+                        SaveState(state_file, handler->GetSerializedState());
+                    } catch (const std::exception& ex) {
+                        BOOST_LOG_TRIVIAL(error) << "Failed to periodic save state: " << ex.what();
+                    }
+                }
+            );
+            save_ticker->Start();
         }
 
         boost::json::value start_data{{"port", port}, {"address", address.to_string()}};
         BOOST_LOG_TRIVIAL(info) << boost::log::add_value(additional_data, start_data)
                                 << "server started";
 
-        RunWorkers(std::max(1u, num_threads), [&ioc] {
+        RunWorkers(num_threads, [&ioc] {
             ioc.run();
         });
         

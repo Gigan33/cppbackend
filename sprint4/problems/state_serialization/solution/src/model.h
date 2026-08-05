@@ -22,6 +22,11 @@
 #include "loot_generator.h"
 #include "tagged.h"
 
+// Forward declaration для избежания циклической зависимости
+namespace serialization {
+class SavedState;
+}
+
 namespace model {
 
 using Dimension = int;
@@ -390,6 +395,15 @@ public:
         return nullptr;
     }
 
+    std::shared_ptr<Dog> FindDog(Dog::Id id) const {
+        for (const auto& dog : dogs_) {
+            if (dog->GetId() == id) {
+                return dog;
+            }
+        }
+        return nullptr;
+    }
+
     void Tick(double dt);
     void GenerateLoot(double dt);
 
@@ -577,8 +591,9 @@ public:
         return default_bag_capacity_; 
     }
 
-    void SaveState(const std::filesystem::path& path) const;
-    void RestoreState(const std::filesystem::path& path);
+    // --- ИЗМЕНЕНИЯ СЕРИАЛИЗАЦИИ СОСТОЯНИЯ ---
+    serialization::SavedState GetSerializedState() const;
+    void RestoreState(const serialization::SavedState& state);
 
     void EnableAutoSave(std::filesystem::path path, std::chrono::milliseconds period) {
         state_file_path_ = std::move(path);

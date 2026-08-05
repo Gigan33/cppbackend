@@ -1,5 +1,6 @@
 #include "model.h"
 #include "collision_detector.h"
+#include "model_serialization.h"
 
 #include <algorithm>
 #include <random>
@@ -172,7 +173,7 @@ void Game::Tick(double dt) {
 }
 
 std::pair<Token, uint32_t> Game::JoinGame(const std::string& map_id, const std::string& user_name) {
-    auto map_ptr = FindMap(Map::Id{map_id});
+    auto map_ptr = FindMap(Map::Id(map_id));
     if (!map_ptr) {
         throw std::invalid_argument("mapNotFound");
     }
@@ -191,6 +192,80 @@ std::pair<Token, uint32_t> Game::JoinGame(const std::string& map_id, const std::
 
     Token token = tokens_.AddPlayer(player);
     return {token, player_id};
+}
+
+// --- МЕТОДЫ СЕРИАЛИЗАЦИИ В GAME ---
+
+serialization::SavedState Game::GetSerializedState() const {
+    serialization::SavedState state;
+
+    for (const auto& session : sessions_) {
+        if (session) {
+            state.AddSession(serialization::SessionRepr(*session));
+        }
+    }
+
+    for (const auto& player : players_) {
+        if (!player) continue;
+
+        const auto* token_ptr = tokens_.FindToken(player);
+        if (!token_ptr) continue;
+
+        state.AddPlayer(serialization::PlayerRepr(
+            player->GetId(),
+            **token_ptr,
+            *player->GetDog().GetId(),
+            *player->GetSession()->GetMap()->GetId()
+        ));
+    }
+
+    return state;
+}
+
+void Game::RestoreState(const serialization::SavedState& state) {
+    players_.clear();
+    tokens_ = PlayerTokens{};
+    sessions_.clear();
+    map_id_to_session_.clear();
+    next_player_id_ = 0;
+
+    // 1. Восстанавливаем сессии, собак и потерянные предметы
+    for (const auto& session_repr : state.GetSessions()) {
+        auto map_ptr = FindMap(Map::Id(session_repr.GetMapId()));
+        if (!map_ptr) continue;
+
+        auto session = FindOrCreateSession(map_ptr);
+
+        // Восстанавливаем собак в сессии
+        for (const auto& dog_repr : session_repr.GetDogs()) {
+            auto dog = std::make_shared<Dog>(dog_repr.Restore());
+            session->AddDog(dog);
+        }
+
+        // Восстанавливаем предметы в сессии
+        for (const auto& lost_obj_repr : session_repr.GetLostObjects()) {
+            session->AddLostObject(lost_obj_repr.Restore());
+        }
+    }
+
+    // 2. Восстанавливаем игроков и связываем с имеющимися собаками
+    for (const auto& p_repr : state.GetPlayers()) {
+        auto map_ptr = FindMap(Map::Id(p_repr.GetMapId()));
+        if (!map_ptr) continue;
+
+        auto session = FindOrCreateSession(map_ptr);
+        auto dog = session->FindDog(Dog::Id{p_repr.GetDogId()});
+
+        if (!dog) continue;
+
+        auto player = std::make_shared<Player>(p_repr.GetId(), session, dog);
+        players_.push_back(player);
+        tokens_.AddPlayerWithToken(player, Token(p_repr.GetToken()));
+
+        if (p_repr.GetId() >= next_player_id_) {
+            next_player_id_ = p_repr.GetId() + 1;
+        }
+    }
 }
 
 GameSession::GameSession(const Map* map, const LootGeneratorConfig& config)

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/string.hpp>
 #include <boost/serialization/map.hpp>
@@ -107,6 +109,10 @@ public:
         ar & pos_;
     }
 
+    uint32_t GetId() const { return id_; }
+    unsigned int GetType() const { return type_; }
+    const geom::Point2D& GetPos() const { return pos_; }
+
 private:
     uint32_t id_ = 0;
     unsigned int type_ = 0;
@@ -144,7 +150,6 @@ private:
     std::vector<LostObjectRepr> lost_objects_;
 };
 
-// 4. PlayerRepr (Сериализация игрока и его токена)
 class PlayerRepr {
 public:
     PlayerRepr() = default;
@@ -172,10 +177,20 @@ private:
     std::string map_id_;
 };
 
-// 5. GameStateRepr (Общее сохранение всей игры)
-class GameStateRepr {
+class SavedState {
 public:
-    GameStateRepr() = default;
+    SavedState() = default;
+
+    void AddSession(SessionRepr session) {
+        sessions_.push_back(std::move(session));
+    }
+
+    void AddPlayer(PlayerRepr player) {
+        players_.push_back(std::move(player));
+    }
+
+    const std::vector<SessionRepr>& GetSessions() const { return sessions_; }
+    const std::vector<PlayerRepr>& GetPlayers() const { return players_; }
 
     template <typename Archive>
     void serialize(Archive& ar, [[maybe_unused]] const unsigned version) {
@@ -183,6 +198,7 @@ public:
         ar & players_;
     }
 
+private:
     std::vector<SessionRepr> sessions_;
     std::vector<PlayerRepr> players_;
 };
