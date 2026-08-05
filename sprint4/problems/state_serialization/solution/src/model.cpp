@@ -211,9 +211,12 @@ serialization::SavedState Game::GetSerializedState() const {
         const auto* token_ptr = tokens_.FindToken(player);
         if (!token_ptr) continue;
 
+        // Достаем std::string из util::Tagged через operator*
+        std::string token_str = **token_ptr; 
+
         state.AddPlayer(serialization::PlayerRepr(
             player->GetId(),
-            **token_ptr,
+            token_str,
             *player->GetDog().GetId(),
             *player->GetSession()->GetMap()->GetId()
         ));
