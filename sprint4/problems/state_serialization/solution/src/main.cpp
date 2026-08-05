@@ -65,7 +65,6 @@ std::optional<Args> ParseCommandLine(int argc, char* argv[]) {
         ("www-root,w", po::value<std::string>(&args.www_root)->value_name("dir"), "set static files root")
         ("randomize-spawn-points", po::bool_switch(&args.randomize_spawn_points), "spawn dogs at random positions")
         ("state-file", po::value<std::string>(&args.state_file)->value_name("file"), "set state file path")
-        // Поддерживаем оба имени флага: --state-delay (из тестов) и --save-state-period
         ("state-delay", po::value<uint64_t>()->value_name("milliseconds"), "set state save period")
         ("save-state-period", po::value<uint64_t>()->value_name("milliseconds"), "set state save period");
 
@@ -89,7 +88,6 @@ std::optional<Args> ParseCommandLine(int argc, char* argv[]) {
         args.tick_period = vm["tick-period"].as<uint64_t>();
     }
 
-    // Проверяем оба ключа
     if (vm.count("state-delay")) {
         args.save_state_period = vm["state-delay"].as<uint64_t>();
     } else if (vm.count("save-state-period")) {
@@ -133,8 +131,26 @@ int main(int argc, char* argv[]) {
             return EXIT_SUCCESS;
         }
 
+        // 1. Загружаем карту и конфигурацию
         model::Game game = json_loader::LoadGame(args->config_file);
         game.SetRandomizeSpawnPoints(args->randomize_spawn_points); 
+
+        // 2. ВОССТАНАВЛИВАЕМ СОСТОЯНИЕ СИНХРОННО ДО ЗАПУСКА СЕТЕВОГО ДВИЖКА
+        // Делаем это прямо в объект game (или через синхронный метод игрового класса)
+        if (!args->state_file.empty() && std::filesystem::exists(args->state_file)) {
+            try {
+                std::ifstream ifs(args->state_file, std::ios::binary);
+                boost::archive::text_iarchive ia(ifs);
+                serialization::SavedState saved_state;
+                ia >> saved_state;
+
+                // Загружаем напрямую в объект game, пока нет никаких потоков и гонок!
+                game.RestoreState(saved_state); 
+                BOOST_LOG_TRIVIAL(info) << "State successfully restored from " << args->state_file;
+            } catch (const std::exception& ex) {
+                BOOST_LOG_TRIVIAL(error) << "Failed to restore state: " << ex.what();
+            }
+        }
 
         const unsigned num_threads = std::thread::hardware_concurrency();
         net::io_context ioc(num_threads);
@@ -143,6 +159,7 @@ int main(int argc, char* argv[]) {
 
         bool auto_tick_enabled = args->tick_period.has_value();
 
+        // 3. Создаем хэндлер, который уже получит ПОЛНОСТЬЮ восстановленную игру
         auto handler = std::make_shared<http_handler::RequestHandler>(
             game, args->www_root, *api_strand, auto_tick_enabled
         );
@@ -152,23 +169,8 @@ int main(int argc, char* argv[]) {
             if (args->save_state_period) {
                 save_period = std::chrono::milliseconds{*args->save_state_period};
             }
-            // Передаем путь и период в хэндлер, чтобы при /api/v1/game/tick он мог сохранять по дельте
+            // Если вам нужно передавать путь сохранения в хэндлер:
             // handler->SetSaveOptions(args->state_file, save_period);
-        }
-
-        // --- ВОССТАНОВЛЕНИЕ СОСТОЯНИЯ ---
-        if (!args->state_file.empty() && std::filesystem::exists(args->state_file)) {
-            try {
-                std::ifstream ifs(args->state_file, std::ios::binary);
-                boost::archive::text_iarchive ia(ifs);
-                serialization::SavedState saved_state;
-                ia >> saved_state;
-
-                handler->RestoreState(saved_state);
-                BOOST_LOG_TRIVIAL(info) << "State successfully restored from " << args->state_file;
-            } catch (const std::exception& ex) {
-                BOOST_LOG_TRIVIAL(error) << "Failed to restore state: " << ex.what();
-            }
         }
 
         // --- ПЕРЕХВАТ СИГНАЛОВ И СОХРАНЕНИЕ ПРИ ВЫХОДЕ ---

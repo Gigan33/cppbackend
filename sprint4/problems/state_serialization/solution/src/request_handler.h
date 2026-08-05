@@ -7,6 +7,7 @@
 #include <boost/asio/dispatch.hpp>
 #include <boost/beast/http/file_body.hpp>
 #include <filesystem>
+#include <future>
 #include <functional>
 #include <fstream>
 #include <sstream>
@@ -125,12 +126,22 @@ public:
     RequestHandler(const RequestHandler&) = delete;
     RequestHandler& operator=(const RequestHandler&) = delete;
 
-    serialization::SavedState GetSerializedState() const {
-        serialization::SavedState state;
-        net::dispatch(api_strand_, [this, &state]() {
-            state = game_.GetSerializedState();
+    void RestoreState(serialization::SavedState state) {
+        net::dispatch(api_strand_, [this, state = std::move(state)]() {
+            game_.RestoreState(state);
         });
-        return state;
+    }
+
+    serialization::SavedState GetSerializedState() const {
+        // Убедитесь, что promise живет на стеке и передается по ссылке
+        auto promise = std::make_shared<std::promise<serialization::SavedState>>();
+        auto future = promise->get_future();
+
+        net::dispatch(api_strand_, [this, promise]() {
+            promise->set_value(game_.GetSerializedState());
+        });
+
+        return future.get();
     }
 
     void Tick(std::chrono::milliseconds delta_time) {
@@ -145,12 +156,6 @@ public:
                     time_since_last_save_ = std::chrono::milliseconds{0};
                 }
             }
-        });
-    }
-
-    void RestoreState(const serialization::SavedState& state) {
-        net::dispatch(api_strand_, [this, &state]() {
-            game_.RestoreState(state);
         });
     }
 
