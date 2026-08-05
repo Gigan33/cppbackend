@@ -154,24 +154,31 @@ class PlayerRepr {
 public:
     PlayerRepr() = default;
 
-    PlayerRepr(uint32_t id, std::string token, uint32_t dog_id, std::string map_id)
-        : id_(id), token_(std::move(token)), dog_id_(dog_id), map_id_(std::move(map_id)) {}
+    PlayerRepr(uint32_t id, std::string name, std::string token, uint32_t dog_id, std::string map_id)
+        : id_(id)
+        , name_(std::move(name))
+        , token_(std::move(token))
+        , dog_id_(dog_id)
+        , map_id_(std::move(map_id)) {}
 
     template <typename Archive>
     void serialize(Archive& ar, [[maybe_unused]] const unsigned version) {
         ar & id_;
+        ar & name_;
         ar & token_;
         ar & dog_id_;
         ar & map_id_;
     }
 
     uint32_t GetId() const { return id_; }
+    const std::string& GetName() const { return name_; }
     const std::string& GetToken() const { return token_; }
     uint32_t GetDogId() const { return dog_id_; }
     const std::string& GetMapId() const { return map_id_; }
 
 private:
     uint32_t id_ = 0;
+    std::string name_;
     std::string token_;
     uint32_t dog_id_ = 0;
     std::string map_id_;

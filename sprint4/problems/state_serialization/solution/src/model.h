@@ -381,10 +381,11 @@ public:
         }
     }
 
-    void AddLostObject(const LostObject& obj) {
-        lost_objects_[obj.id] = obj;
-        if (obj.id >= next_loot_id_) {
-            next_loot_id_ = obj.id + 1;
+    void AddLostObject(model::LostObject obj) {
+        uint32_t id = obj.id;
+        lost_objects_[id] = std::move(obj);
+        if (id >= next_loot_id_) {
+            next_loot_id_ = id + 1;
         }
     }
 
