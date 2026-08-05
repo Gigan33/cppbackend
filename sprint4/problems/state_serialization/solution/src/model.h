@@ -479,9 +479,9 @@ public:
         return token;
     }
 
-    void AddPlayerWithToken(std::shared_ptr<Player> player, const Token& token) {
+    void AddPlayerWithToken(std::shared_ptr<Player> player, Token token) {
         token_to_player_[token] = player;
-        player_to_token_.emplace(player, token);
+        player_to_token_.emplace(std::move(player), std::move(token));
     }
 
     std::shared_ptr<Player> FindPlayerByToken(const Token& token) const {

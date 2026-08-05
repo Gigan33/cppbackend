@@ -58,9 +58,7 @@ public:
         dog.SetDirection(direction_);
         dog.AddScore(score_);
         for (const auto& item : bag_content_) {
-            if (!dog.PutToBag(item)) {
-                throw std::runtime_error("Failed to put bag content");
-            }
+            dog.PutToBag(item);
         }
         return dog;
     }
@@ -72,7 +70,12 @@ public:
         ar & pos_;
         ar & bag_capacity_;
         ar & speed_;
-        ar & direction_;
+        
+        // Сериализуем enum Direction как int
+        int dir = static_cast<int>(direction_);
+        ar & dir;
+        direction_ = static_cast<model::Direction>(dir);
+
         ar & score_;
         ar & bag_content_;
     }

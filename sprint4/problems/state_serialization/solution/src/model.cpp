@@ -6,6 +6,7 @@
 #include <random>
 #include <stdexcept>
 #include <unordered_set>
+#include <boost/log/trivial.hpp>
 
 using geom::Point2D;
 
@@ -252,17 +253,30 @@ void Game::RestoreState(const serialization::SavedState& state) {
     // 2. Восстанавливаем игроков и связываем их с токенами
     for (const auto& p_repr : state.GetPlayers()) {
         auto map_ptr = FindMap(Map::Id(p_repr.GetMapId()));
-        if (!map_ptr) continue;
+        if (!map_ptr) {
+            // ДОБАВЬ ЭТОТ ЛОГ: если карта не найдена, игрок пропустится!
+            BOOST_LOG_TRIVIAL(error) << "RestoreState ERROR: Map not found: " << p_repr.GetMapId();
+            continue;
+        }
 
         auto session = FindOrCreateSession(map_ptr);
 
         // Ищем собаку в восстановленной сессии
         auto dog = session->FindDog(Dog::Id(p_repr.GetDogId()));
-        if (!dog) continue;
+        if (!dog) {
+            // ДОБАВЬ ЭТОТ ЛОГ: если собака не найдена, токен НЕ восстановится!
+            BOOST_LOG_TRIVIAL(error) << "RestoreState ERROR: Dog not found with ID: " << p_repr.GetDogId();
+            continue;
+        }
 
         // Создаем игрока и подтягиваем токен
         auto player = std::make_shared<Player>(p_repr.GetId(), session, dog);
         players_.push_back(player);
+
+        // ДОБАВЬ ЭТОТ ЛОГ: выводим токен, который мы пытаемся восстановить
+        BOOST_LOG_TRIVIAL(info) << "Restoring player ID: " << p_repr.GetId() 
+                                << " with token: '" << p_repr.GetToken() << "'";
+
         tokens_.AddPlayerWithToken(player, Token(p_repr.GetToken()));
 
         if (p_repr.GetId() >= next_player_id_) {
