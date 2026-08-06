@@ -135,21 +135,7 @@ int main(int argc, char* argv[]) {
         model::Game game = json_loader::LoadGame(args->config_file);
         game.SetRandomizeSpawnPoints(args->randomize_spawn_points); 
 
-        // 2. ВОССТАНАВЛИВАЕМ СОСТОЯНИЕ СИНХРОННО ДО ЗАПУСКА СЕТЕВОГО ДВИЖКА
-        if (!args->state_file.empty() && std::filesystem::exists(args->state_file)) {
-            try {
-                std::ifstream ifs(args->state_file, std::ios::binary);
-                boost::archive::text_iarchive ia(ifs);
-                serialization::SavedState saved_state;
-                ia >> saved_state;
-
-                game.RestoreState(saved_state); 
-                BOOST_LOG_TRIVIAL(info) << "State successfully restored from " << args->state_file;
-            } catch (const std::exception& ex) {
-                BOOST_LOG_TRIVIAL(error) << "Failed to restore state: " << ex.what();
-            }
-        }
-
+        // 2. Инициализируем сетевые сущности ДО создания хэндлера
         const unsigned num_threads = std::thread::hardware_concurrency();
         net::io_context ioc(num_threads);
 
@@ -157,12 +143,28 @@ int main(int argc, char* argv[]) {
 
         bool auto_tick_enabled = args->tick_period.has_value();
 
-        // 3. Создаем хэндлер
+        // 3. Создаем хэндлер ПЕРЕД восстановлением состояния
         auto handler = std::make_shared<http_handler::RequestHandler>(
             game, args->www_root, *api_strand, auto_tick_enabled
         );
 
-        // 4. ПЕРЕДАЕМ НАСТРОЙКИ СОХРАНЕНИЯ В ХЭНДЛЕР
+        // 4. ВОССТАНАВЛИВАЕМ СОСТОЯНИЕ ЧЕРЕЗ ХЭНДЛЕР
+        if (!args->state_file.empty() && std::filesystem::exists(args->state_file)) {
+            try {
+                std::ifstream ifs(args->state_file, std::ios::binary);
+                boost::archive::text_iarchive ia(ifs);
+                serialization::SavedState saved_state;
+                ia >> saved_state;
+
+                // ВЫЗЫВАЕМ МЕТОД У ХЭНДЛЕРА, А НЕ У ИГРЫ
+                handler->RestoreState(saved_state); 
+                BOOST_LOG_TRIVIAL(info) << "State successfully restored from " << args->state_file;
+            } catch (const std::exception& ex) {
+                BOOST_LOG_TRIVIAL(error) << "Failed to restore state: " << ex.what();
+            }
+        }
+
+        // 5. ПЕРЕДАЕМ НАСТРОЙКИ СОХРАНЕНИЯ В ХЭНДЛЕР
         if (!args->state_file.empty()) {
             std::optional<std::chrono::milliseconds> save_period;
             if (args->save_state_period) {
