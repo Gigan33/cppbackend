@@ -5,11 +5,13 @@
 #include <random>
 #include <stdexcept>
 #include <unordered_set>
+#include <limits>
 
 namespace model {
 
 namespace {
 constexpr double ROAD_HALF_WIDTH = 0.4;
+constexpr double OFFICE_WIDTH = 0.5;
 
 enum class ProviderItemType { Item, Office };
 
@@ -110,7 +112,7 @@ void Dog::UpdatePosition(double dt, const Map* map) {
     double max_allowed_y = next_pos.y;
 
     if (speed_.ux > 0) {
-        double limit = -1e9;
+        double limit = std::numeric_limits<double>::lowest();
         for (const auto* road : current_roads) {
             limit = std::max(limit, GetRoadBounds(*road).max_x);
         }
@@ -118,7 +120,7 @@ void Dog::UpdatePosition(double dt, const Map* map) {
         speed_.ux = 0.0;
     } 
     else if (speed_.ux < 0) {
-        double limit = 1e9;
+        double limit = std::numeric_limits<double>::max();
         for (const auto* road : current_roads) {
             limit = std::min(limit, GetRoadBounds(*road).min_x);
         }
@@ -126,7 +128,7 @@ void Dog::UpdatePosition(double dt, const Map* map) {
         speed_.ux = 0.0;
     } 
     else if (speed_.uy > 0) {
-        double limit = -1e9;
+        double limit = std::numeric_limits<double>::lowest();
         for (const auto* road : current_roads) {
             limit = std::max(limit, GetRoadBounds(*road).max_y);
         }
@@ -134,7 +136,7 @@ void Dog::UpdatePosition(double dt, const Map* map) {
         speed_.uy = 0.0;
     } 
     else if (speed_.uy < 0) {
-        double limit = 1e9;
+        double limit = std::numeric_limits<double>::max();
         for (const auto* road : current_roads) {
             limit = std::min(limit, GetRoadBounds(*road).min_y);
         }
@@ -341,7 +343,7 @@ void GameSession::Tick(double dt) {
                 ProviderItemType::Office,
                 i,
                 {static_cast<double>(office.GetPosition().x), static_cast<double>(office.GetPosition().y)},
-                0.5
+                OFFICE_WIDTH
             });
         }
     }

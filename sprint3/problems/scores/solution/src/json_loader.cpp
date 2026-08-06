@@ -103,7 +103,14 @@ model::Game LoadGame(const std::filesystem::path& json_path) {
     
     std::stringstream ss;
     ss << file.rdbuf();
-    json::value root = json::parse(ss.str());
+
+    json::value root;
+    try {
+        root = json::parse(ss.str());
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to parse JSON file " + json_path.string() + ": " + e.what());
+    }
+
     auto obj = root.as_object();
     
     model::Game game;
