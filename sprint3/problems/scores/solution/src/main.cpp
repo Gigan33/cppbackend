@@ -124,12 +124,13 @@ int main(int argc, char* argv[]) {
 
         std::shared_ptr<util::Ticker> ticker;
         if (args->tick_period) {
+            constexpr double MILLISECONDS_IN_SECOND = 1000.0;
             std::chrono::milliseconds period{*args->tick_period};
             ticker = std::make_shared<util::Ticker>(
                 api_strand, 
                 period,
                 [&game](std::chrono::milliseconds delta) {
-                    double dt = delta.count() / 1000.0;
+                    double dt = delta.count() / MILLISECONDS_IN_SECOND;
                     game.Tick(dt);
                 }
             );

@@ -11,8 +11,7 @@ SessionBase::SessionBase(tcp::socket&& socket)
 }
 
 void SessionBase::Close() {
-    beast::error_code ec;
-    stream_.socket().shutdown(tcp::socket::shutdown_send, ec);
+    stream_.socket().shutdown(tcp::socket::shutdown_send);
 }
 
 void SessionBase::Run() {
