@@ -149,26 +149,40 @@ public:
         return future.get();
     }
 
-    void SetSaveOptions(std::string state_file_path, std::optional<std::chrono::milliseconds> save_period) {
+    void SetSaveOptions(std::string state_file_path, 
+                        std::optional<std::chrono::milliseconds> save_period,
+                        SaveStateFn save_state_fn) {
         state_file_ = std::move(state_file_path);
         save_period_ = save_period;
+        save_state_fn_ = std::move(save_state_fn);
     }
 
     void Tick(std::chrono::milliseconds delta_time) {
-        // ВНИМАНИЕ: Предполагается, что вызывающий поток уже находится в api_strand_!
+        // 1. Обновляем физику и логику игры
         double dt_seconds = delta_time.count() / 1000.0;
         game_.Tick(dt_seconds);
 
+        // 2. Проверяем таймер автосохранения
         if (save_period_ && !state_file_.empty() && save_state_fn_) {
             time_since_last_save_ += delta_time;
             if (time_since_last_save_ >= *save_period_) {
-                try {
-                    save_state_fn_(state_file_, game_.GetSerializedState());
-                    time_since_last_save_ = std::chrono::milliseconds{0};
-                } catch (const std::exception& ex) {
-                    // Обязательно логируем ошибки записи на диск
-                    BOOST_LOG_TRIVIAL(error) << "Failed to auto-save state: " << ex.what();
-                }
+                time_since_last_save_ = std::chrono::milliseconds{0};
+
+                // Быстро снимкаем состояние прямо в strand
+                auto state = game_.GetSerializedState();
+                auto filename = state_file_;
+                auto save_fn = save_state_fn_;
+
+                // Выносим тяжелую запись на диск в фоновый поток (не блокируем api_strand_)
+                std::async(std::launch::async, [filename = std::move(filename), 
+                                            state = std::move(state), 
+                                            save_fn = std::move(save_fn)]() mutable {
+                    try {
+                        save_fn(filename, state);
+                    } catch (const std::exception& ex) {
+                        BOOST_LOG_TRIVIAL(error) << "Failed to auto-save state: " << ex.what();
+                    }
+                });
             }
         }
     }

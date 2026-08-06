@@ -170,7 +170,7 @@ int main(int argc, char* argv[]) {
             if (args->save_state_period) {
                 save_period = std::chrono::milliseconds{*args->save_state_period};
             }
-            handler->SetSaveOptions(args->state_file, save_period);
+            handler->SetSaveOptions(args->state_file, save_period, &SaveState);
         }
 
         // --- ПЕРЕХВАТ СИГНАЛОВ И СОХРАНЕНИЕ ПРИ ВЫХОДЕ ---
