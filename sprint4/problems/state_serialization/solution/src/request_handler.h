@@ -135,12 +135,15 @@ public:
     }
 
     serialization::SavedState GetSerializedState() const {
-        // Убедитесь, что promise живет на стеке и передается по ссылке
         auto promise = std::make_shared<std::promise<serialization::SavedState>>();
         auto future = promise->get_future();
 
         net::dispatch(api_strand_, [this, promise]() {
-            promise->set_value(game_.GetSerializedState());
+            try {
+                promise->set_value(game_.GetSerializedState());
+            } catch (...) {
+                promise->set_exception(std::current_exception());
+            }
         });
 
         return future.get();
@@ -450,8 +453,14 @@ public:
             }
 
             double delta_ms = 0.0;
-            if (obj.at("timeDelta").is_int64()) {
-                delta_ms = static_cast<double>(obj.at("timeDelta").as_int64());
+            const auto& val = obj.at("timeDelta");
+
+            if (val.is_int64()) {
+                delta_ms = static_cast<double>(val.as_int64());
+            } else if (val.is_uint64()) {
+                delta_ms = static_cast<double>(val.as_uint64());
+            } else if (val.is_double()) {
+                delta_ms = val.as_double();
             } else {
                 throw std::invalid_argument("Invalid timeDelta type");
             }
@@ -662,11 +671,11 @@ private:
         StringResponse response(http::status::method_not_allowed, version);
         response.set(http::field::content_type, "application/json");
         response.set(http::field::cache_control, "no-cache");
-        response.set(http::field::allow, allow_methods.data());
+        response.set(http::field::allow, ToBoostSV(allow_methods));
         
         json::object err_obj;
         err_obj["code"] = "invalidMethod";
-        err_obj["message"] = msg.data();
+        err_obj["message"] = std::string(msg);
         
         response.body() = json::serialize(err_obj);
         response.content_length(response.body().size());
