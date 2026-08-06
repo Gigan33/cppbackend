@@ -3,9 +3,11 @@
 #include "model_serialization.h"
 
 #include <algorithm>
+#include <fstream>
 #include <random>
 #include <stdexcept>
 #include <unordered_set>
+#include <boost/archive/text_oarchive.hpp>
 #include <boost/log/trivial.hpp>
 
 using geom::Point2D;
@@ -167,9 +169,55 @@ void Game::AddMap(Map map) {
     maps_.emplace_back(std::move(map));
 }
 
+void Game::SaveState() {
+    if (!state_file_path_ || state_file_path_->empty()) {
+        return;
+    }
+
+    try {
+        auto temp_path = *state_file_path_;
+        temp_path += ".tmp";
+
+        {
+            std::ofstream ofs(temp_path, std::ios::binary);
+            if (!ofs.is_open()) {
+                BOOST_LOG_TRIVIAL(error) << "Failed to open state file for writing: " << temp_path;
+                return;
+            }
+            boost::archive::text_oarchive oa(ofs);
+            auto state = GetSerializedState();
+            oa << state;
+        }
+
+        std::filesystem::rename(temp_path, *state_file_path_);
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error) << "Error saving game state: " << e.what();
+    }
+}
+
 void Game::Tick(double dt) {
+    // 1. Двигаем игровые сессии
     for (auto& session : sessions_) {
         session->Tick(dt);
+    }
+
+    // 2. Если путь не задан — автосохранение не требуется
+    if (!state_file_path_ || state_file_path_->empty()) {
+        return;
+    }
+
+    // 3. Проверяем периодичность сохранения
+    if (save_period_.count() > 0) {
+        auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::duration<double>(dt)
+        );
+
+        time_since_last_save_ += dt_ms;
+
+        if (time_since_last_save_ >= save_period_) {
+            SaveState();
+            time_since_last_save_ -= save_period_;
+        }
     }
 }
 
@@ -195,17 +243,13 @@ std::pair<Token, uint32_t> Game::JoinGame(const std::string& map_id, const std::
     return {token, player_id};
 }
 
-// --- МЕТОДЫ СЕРИАЛИЗАЦИИ В GAME ---
-
 serialization::SavedState Game::GetSerializedState() const {
     serialization::SavedState state;
 
-    // 1. Сохраняем сессии
     for (const auto& session : sessions_) {
         state.AddSession(serialization::SessionRepr(*session));
     }
 
-    // 2. Сохраняем игроков
     for (const auto& player : players_) {
         if (!player) continue;
 
@@ -213,10 +257,10 @@ serialization::SavedState Game::GetSerializedState() const {
         if (!token_ptr) continue;
 
         state.AddPlayer(serialization::PlayerRepr(
-            player->GetId(),                           // Без звездочки!
-            player->GetName(),                         // Имя игрока
-            **token_ptr,                               // Строка токена
-            *player->GetDog().GetId(),                 // Обращаемся через точку . к собаке
+            player->GetId(),
+            player->GetName(),
+            **token_ptr,
+            *player->GetDog().GetId(),
             *player->GetSession()->GetMap()->GetId()
         ));
     }
@@ -231,49 +275,40 @@ void Game::RestoreState(const serialization::SavedState& state) {
     map_id_to_session_.clear();
     next_player_id_ = 0;
 
-    // 1. Восстанавливаем сессии, собак и предметы
     for (const auto& session_repr : state.GetSessions()) {
         auto map_ptr = FindMap(Map::Id(session_repr.GetMapId()));
         if (!map_ptr) continue;
 
         auto session = FindOrCreateSession(map_ptr);
 
-        // Восстанавливаем собак
         for (const auto& dog_repr : session_repr.GetDogs()) {
             auto dog = std::make_shared<Dog>(dog_repr.Restore());
             session->RestoreDog(dog); 
         }
 
-        // Восстанавливаем предметы
         for (const auto& lost_obj_repr : session_repr.GetLostObjects()) {
             session->AddLostObject(lost_obj_repr.Restore());
         }
     }
 
-    // 2. Восстанавливаем игроков и связываем их с токенами
     for (const auto& p_repr : state.GetPlayers()) {
         auto map_ptr = FindMap(Map::Id(p_repr.GetMapId()));
         if (!map_ptr) {
-            // ДОБАВЬ ЭТОТ ЛОГ: если карта не найдена, игрок пропустится!
             BOOST_LOG_TRIVIAL(error) << "RestoreState ERROR: Map not found: " << p_repr.GetMapId();
             continue;
         }
 
         auto session = FindOrCreateSession(map_ptr);
 
-        // Ищем собаку в восстановленной сессии
         auto dog = session->FindDog(Dog::Id(p_repr.GetDogId()));
         if (!dog) {
-            // ДОБАВЬ ЭТОТ ЛОГ: если собака не найдена, токен НЕ восстановится!
             BOOST_LOG_TRIVIAL(error) << "RestoreState ERROR: Dog not found with ID: " << p_repr.GetDogId();
             continue;
         }
 
-        // Создаем игрока и подтягиваем токен
         auto player = std::make_shared<Player>(p_repr.GetId(), session, dog);
         players_.push_back(player);
 
-        // ДОБАВЬ ЭТОТ ЛОГ: выводим токен, который мы пытаемся восстановить
         BOOST_LOG_TRIVIAL(info) << "Restoring player ID: " << p_repr.GetId() 
                                 << " with token: '" << p_repr.GetToken() << "'";
 

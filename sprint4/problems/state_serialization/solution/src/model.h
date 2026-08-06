@@ -574,7 +574,11 @@ public:
 
     const std::vector<std::shared_ptr<Player>>& GetPlayers() const noexcept { return players_; }
 
+    void SetSavePath(std::filesystem::path path) { state_file_path_ = std::move(path); }
+    void SetSavePeriod(std::chrono::milliseconds period) { save_period_ = period; }
+
     void Tick(double dt);
+    void SaveState();
 
     void SetLootGeneratorConfig(LootGeneratorConfig config) {
         loot_config_ = config;

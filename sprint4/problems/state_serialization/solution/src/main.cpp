@@ -136,7 +136,6 @@ int main(int argc, char* argv[]) {
         game.SetRandomizeSpawnPoints(args->randomize_spawn_points); 
 
         // 2. ВОССТАНАВЛИВАЕМ СОСТОЯНИЕ СИНХРОННО ДО ЗАПУСКА СЕТЕВОГО ДВИЖКА
-        // Делаем это прямо в объект game (или через синхронный метод игрового класса)
         if (!args->state_file.empty() && std::filesystem::exists(args->state_file)) {
             try {
                 std::ifstream ifs(args->state_file, std::ios::binary);
@@ -144,7 +143,6 @@ int main(int argc, char* argv[]) {
                 serialization::SavedState saved_state;
                 ia >> saved_state;
 
-                // Загружаем напрямую в объект game, пока нет никаких потоков и гонок!
                 game.RestoreState(saved_state); 
                 BOOST_LOG_TRIVIAL(info) << "State successfully restored from " << args->state_file;
             } catch (const std::exception& ex) {
@@ -159,18 +157,18 @@ int main(int argc, char* argv[]) {
 
         bool auto_tick_enabled = args->tick_period.has_value();
 
-        // 3. Создаем хэндлер, который уже получит ПОЛНОСТЬЮ восстановленную игру
+        // 3. Создаем хэндлер
         auto handler = std::make_shared<http_handler::RequestHandler>(
             game, args->www_root, *api_strand, auto_tick_enabled
         );
 
+        // 4. ПЕРЕДАЕМ НАСТРОЙКИ СОХРАНЕНИЯ В ХЭНДЛЕР
         if (!args->state_file.empty()) {
             std::optional<std::chrono::milliseconds> save_period;
             if (args->save_state_period) {
                 save_period = std::chrono::milliseconds{*args->save_state_period};
             }
-            // Если вам нужно передавать путь сохранения в хэндлер:
-            // handler->SetSaveOptions(args->state_file, save_period);
+            handler->SetSaveOptions(args->state_file, save_period);
         }
 
         // --- ПЕРЕХВАТ СИГНАЛОВ И СОХРАНЕНИЕ ПРИ ВЫХОДЕ ---
@@ -219,25 +217,6 @@ int main(int argc, char* argv[]) {
                 }
             );
             game_ticker->Start();
-        }
-
-        // --- НАСТРОЙКА ПЕРИОДИЧЕСКОГО СОХРАНЕНИЯ СОСТОЯНИЯ ПО ТАЙМЕРУ ---
-        std::shared_ptr<util::Ticker> save_ticker;
-        if (args->save_state_period && !args->state_file.empty()) {
-            std::chrono::milliseconds save_period{*args->save_state_period};
-
-            save_ticker = std::make_shared<util::Ticker>(
-                api_strand,
-                save_period,
-                [handler, state_file = args->state_file](std::chrono::milliseconds) {
-                    try {
-                        SaveState(state_file, handler->GetSerializedState());
-                    } catch (const std::exception& ex) {
-                        BOOST_LOG_TRIVIAL(error) << "Failed to periodic save state: " << ex.what();
-                    }
-                }
-            );
-            save_ticker->Start();
         }
 
         boost::json::value start_data{{"port", port}, {"address", address.to_string()}};

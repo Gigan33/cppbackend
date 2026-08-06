@@ -6,6 +6,7 @@
 #include <boost/json.hpp>
 #include <boost/asio/dispatch.hpp>
 #include <boost/beast/http/file_body.hpp>
+#include <boost/log/trivial.hpp>
 #include <filesystem>
 #include <future>
 #include <functional>
@@ -15,6 +16,7 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
+
 
 namespace fs = std::filesystem;
 
@@ -144,19 +146,28 @@ public:
         return future.get();
     }
 
-    void Tick(std::chrono::milliseconds delta_time) {
-        net::dispatch(api_strand_, [this, delta_time]() {
-            double dt_seconds = delta_time.count() / 1000.0;
-            game_.Tick(dt_seconds);
+    void SetSaveOptions(std::string state_file_path, std::optional<std::chrono::milliseconds> save_period) {
+        state_file_ = std::move(state_file_path);
+        save_period_ = save_period;
+    }
 
-            if (save_period_ && !state_file_.empty() && save_state_fn_) {
-                time_since_last_save_ += delta_time;
-                if (time_since_last_save_ >= *save_period_) {
+    void Tick(std::chrono::milliseconds delta_time) {
+        // ВНИМАНИЕ: Предполагается, что вызывающий поток уже находится в api_strand_!
+        double dt_seconds = delta_time.count() / 1000.0;
+        game_.Tick(dt_seconds);
+
+        if (save_period_ && !state_file_.empty() && save_state_fn_) {
+            time_since_last_save_ += delta_time;
+            if (time_since_last_save_ >= *save_period_) {
+                try {
                     save_state_fn_(state_file_, game_.GetSerializedState());
                     time_since_last_save_ = std::chrono::milliseconds{0};
+                } catch (const std::exception& ex) {
+                    // Обязательно логируем ошибки записи на диск
+                    BOOST_LOG_TRIVIAL(error) << "Failed to auto-save state: " << ex.what();
                 }
             }
-        });
+        }
     }
 
     StringResponse MakeStringResponse(
