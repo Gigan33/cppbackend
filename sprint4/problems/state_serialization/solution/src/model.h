@@ -479,18 +479,23 @@ public:
     PlayerTokens& operator=(const PlayerTokens&) = delete;
 
     Token AddPlayer(std::shared_ptr<Player> player) {
-        std::string token_str = GenerateToken();
-        Token token{token_str};
+        Token token{GenerateToken()};
         
-        // Используем emplace вместо operator[]
-        token_to_player_.emplace(token, player);
-        player_to_token_.emplace(std::move(player), token);
-        
+        // Пересоздаем токен, пока не найдем уникальный
+        while (token_to_player_.count(token) > 0) {
+            token = Token{GenerateToken()};
+        }
+
+        AddPlayerWithToken(std::move(player), token);
+
         return token;
     }
 
     void AddPlayerWithToken(std::shared_ptr<Player> player, Token token) {
-        // emplace не требует конструктора по умолчанию
+        if (token_to_player_.count(token) || player_to_token_.count(player)) {
+            throw std::invalid_argument("Player or Token already exists");
+        }
+
         token_to_player_.emplace(token, player);
         player_to_token_.emplace(std::move(player), std::move(token));
     }
