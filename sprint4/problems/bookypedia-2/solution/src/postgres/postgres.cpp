@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS authors (
 );
 )"_zv);
 
-    // 2. Книги (с CASCADE удалением при удалении автора)
+    // 2. Книги
     work.exec(R"(
 CREATE TABLE IF NOT EXISTS books (
     id UUID PRIMARY KEY,
@@ -57,7 +57,23 @@ ON CONFLICT (id) DO UPDATE SET name=$2;
 
 bool AuthorRepositoryImpl::Delete(const domain::AuthorId& id) {
     pqxx::work work{connection_};
-    auto result = work.exec_params("DELETE FROM authors WHERE id = $1;"_zv, id.ToString());
+    std::string id_str = id.ToString();
+
+    // 1. Сначала удаляем теги всех книг этого автора
+    work.exec_params(
+        "DELETE FROM book_tags WHERE book_id IN (SELECT id FROM books WHERE author_id = $1);"_zv,
+        id_str
+    );
+
+    // 2. Затем удаляем все книги этого автора
+    work.exec_params(
+        "DELETE FROM books WHERE author_id = $1;"_zv,
+        id_str
+    );
+
+    // 3. Удаляем самого автора
+    auto result = work.exec_params("DELETE FROM authors WHERE id = $1;"_zv, id_str);
+    
     work.commit();
     return result.affected_rows() > 0;
 }
@@ -113,7 +129,17 @@ ON CONFLICT (id) DO UPDATE SET title=$3, publication_year=$4;
 
 bool BookRepositoryImpl::Delete(const domain::BookId& id) {
     pqxx::work work{connection_};
-    auto result = work.exec_params("DELETE FROM books WHERE id = $1;"_zv, id.ToString());
+    std::string id_str = id.ToString();
+
+    // 1. Сначала удаляем теги книги
+    work.exec_params(
+        "DELETE FROM book_tags WHERE book_id = $1;"_zv,
+        id_str
+    );
+
+    // 2. Затем удаляем саму книгу
+    auto result = work.exec_params("DELETE FROM books WHERE id = $1;"_zv, id_str);
+    
     work.commit();
     return result.affected_rows() > 0;
 }

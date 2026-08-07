@@ -189,11 +189,9 @@ bool View::AddBook(std::istream& cmd_input) const {
                 std::string answer;
                 std::getline(input_, answer);
                 boost::algorithm::trim(answer);
-                if (answer != "y" && answer != "Y") {
-                    output_ << "Failed to add book"sv << std::endl;
-                    return true;
+                if (answer == "y" || answer == "Y") {
+                    author_id = use_cases_.AddAuthor(author_name);
                 }
-                author_id = use_cases_.AddAuthor(author_name);
             } else {
                 author_id = author->GetId();
             }
@@ -201,16 +199,17 @@ bool View::AddBook(std::istream& cmd_input) const {
             author_id = SelectAuthor();
         }
 
+        // Вычитываем теги ДО проверки наличия автора, чтобы не загрязнять stdin
+        output_ << "Enter tags (comma separated):" << std::endl;
+        std::string raw_tags;
+        std::getline(input_, raw_tags);
+
         if (!author_id) {
             output_ << "Failed to add book"sv << std::endl;
             return true;
         }
 
-        output_ << "Enter tags (comma separated):" << std::endl;
-        std::string raw_tags;
-        std::getline(input_, raw_tags);
         auto tags = NormalizeTags(raw_tags);
-
         use_cases_.AddBook(*author_id, title, pub_year, tags);
     } catch (...) {
         output_ << "Failed to add book"sv << std::endl;
