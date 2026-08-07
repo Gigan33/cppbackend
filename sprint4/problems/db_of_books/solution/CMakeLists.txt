@@ -9,5 +9,5 @@ conan_basic_setup(TARGETS)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-add_executable(db_example main.cpp)
+add_executable(book_manager main.cpp)
 target_link_libraries(db_example CONAN_PKG::libpqxx)
