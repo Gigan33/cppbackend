@@ -5,9 +5,8 @@
 #include <boost/json.hpp>
 
 namespace json = boost::json;
-using namespace std::literals;
-#include <boost/json/src.hpp>
 
+// Создание таблицы, если она не существует
 void InitDatabase(pqxx::connection& conn) {
     pqxx::work tx{conn};
     tx.exec(R"(
@@ -18,10 +17,11 @@ void InitDatabase(pqxx::connection& conn) {
             year INTEGER NOT NULL,
             isbn CHAR(13) UNIQUE
         );
-    )"_pqxx);
+    )");
     tx.commit();
 }
 
+// Добавление книги в БД
 bool AddBook(pqxx::connection& conn, 
              const std::string& title, 
              const std::string& author, 
@@ -35,22 +35,21 @@ bool AddBook(pqxx::connection& conn,
         );
         tx.commit();
         return true;
-    } catch (const pqxx::sql_error& e) {
-        // При нарушении UNIQUE ограничения (или любой другой ошибке SQL) возвращаем false
-        return false;
     } catch (const std::exception& e) {
         return false;
     }
 }
 
+// Получение списка всех книг
 json::array GetAllBooks(pqxx::connection& conn) {
     pqxx::read_transaction tx{conn};
-
-    auto result = tx.exec(R"(
+    
+    // Сортировка согласно требованиям задания
+    pqxx::result result = tx.exec(R"(
         SELECT id, title, author, year, isbn 
         FROM books 
         ORDER BY year DESC, title ASC, author ASC, isbn ASC NULLS LAST;
-    )"_pqxx);
+    )");
 
     json::array books;
     for (const auto& row : result) {
@@ -63,7 +62,7 @@ json::array GetAllBooks(pqxx::connection& conn) {
         if (row["isbn"].is_null()) {
             book["ISBN"] = nullptr;
         } else {
-            // Убираем возможные пробелы от CHAR(13)
+            // Удаляем возможные хвостовые пробелы (так как CHAR(13) дополняет строку пробелами)
             std::string isbn_str = row["isbn"].c_str();
             while (!isbn_str.empty() && isbn_str.back() == ' ') {
                 isbn_str.pop_back();
