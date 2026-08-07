@@ -93,12 +93,20 @@ bool View::DeleteAuthor(std::istream& cmd_input) const {
         std::optional<domain::AuthorId> author_id;
         if (!name.empty()) {
             auto author = use_cases_.FindAuthorByName(name);
-            if (author) author_id = author->GetId();
+            if (author) {
+                author_id = author->GetId();
+            } else {
+                output_ << "Failed to delete author"sv << std::endl;
+                return true;
+            }
         } else {
             author_id = SelectAuthor();
+            if (!author_id) {
+                return true;
+            }
         }
 
-        if (!author_id || !use_cases_.DeleteAuthor(*author_id)) {
+        if (!use_cases_.DeleteAuthor(*author_id)) {
             output_ << "Failed to delete author"sv << std::endl;
         }
     } catch (...) {
@@ -116,14 +124,17 @@ bool View::EditAuthor(std::istream& cmd_input) const {
         std::optional<domain::AuthorId> author_id;
         if (!name.empty()) {
             auto author = use_cases_.FindAuthorByName(name);
-            if (author) author_id = author->GetId();
+            if (author) {
+                author_id = author->GetId();
+            } else {
+                output_ << "Failed to edit author"sv << std::endl;
+                return true;
+            }
         } else {
             author_id = SelectAuthor();
-        }
-
-        if (!author_id) {
-            output_ << "Failed to edit author"sv << std::endl;
-            return true;
+            if (!author_id) {
+                return true;
+            }
         }
 
         output_ << "Enter new name:" << std::endl;
@@ -199,7 +210,9 @@ bool View::AddBook(std::istream& cmd_input) const {
         std::getline(input_, raw_tags);
         auto tags = NormalizeTags(raw_tags);
 
-        use_cases_.AddBook(*author_id, title, pub_year, tags);
+        if (!use_cases_.AddBook(*author_id, title, pub_year, tags)) {
+            output_ << "Failed to add book"sv << std::endl;
+        }
     } catch (...) {
         output_ << "Failed to add book"sv << std::endl;
     }
@@ -208,8 +221,16 @@ bool View::AddBook(std::istream& cmd_input) const {
 
 bool View::DeleteBook(std::istream& cmd_input) const {
     try {
-        auto book = SelectBook(cmd_input);
-        if (!book || !use_cases_.DeleteBook(book->id)) {
+        auto res = SelectBook(cmd_input);
+        if (res.not_found) {
+            output_ << "Book not found"sv << std::endl;
+            return true;
+        }
+        if (res.cancelled || !res.book) {
+            return true;
+        }
+
+        if (!use_cases_.DeleteBook(res.book->id)) {
             output_ << "Failed to delete book"sv << std::endl;
         }
     } catch (...) {
@@ -220,24 +241,26 @@ bool View::DeleteBook(std::istream& cmd_input) const {
 
 bool View::EditBook(std::istream& cmd_input) const {
     try {
-        auto book = SelectBook(cmd_input);
-        if (!book) {
+        auto res = SelectBook(cmd_input);
+        if (res.not_found || res.cancelled || !res.book) {
             output_ << "Book not found"sv << std::endl;
             return true;
         }
 
-        output_ << "Enter new title or empty line to use the current one (" << book->title << "):" << std::endl;
+        const auto& book = *res.book;
+
+        output_ << "Enter new title or empty line to use the current one (" << book.title << "):" << std::endl;
         std::string new_title;
         std::getline(input_, new_title);
         boost::algorithm::trim(new_title);
-        if (new_title.empty()) new_title = book->title;
+        if (new_title.empty()) new_title = book.title;
 
-        output_ << "Enter publication year or empty line to use the current one (" << book->publication_year << "):" << std::endl;
+        output_ << "Enter publication year or empty line to use the current one (" << book.publication_year << "):" << std::endl;
         std::string year_str;
         std::getline(input_, year_str);
         boost::algorithm::trim(year_str);
 
-        int new_year = book->publication_year;
+        int new_year = book.publication_year;
         if (!year_str.empty()) {
             try {
                 new_year = std::stoi(year_str);
@@ -247,13 +270,13 @@ bool View::EditBook(std::istream& cmd_input) const {
             }
         }
 
-        std::string current_tags = boost::algorithm::join(book->tags, ", ");
+        std::string current_tags = boost::algorithm::join(book.tags, ", ");
         output_ << "Enter tags (current tags: " << current_tags << "):" << std::endl;
         std::string raw_tags;
         std::getline(input_, raw_tags);
         auto new_tags = NormalizeTags(raw_tags);
 
-        if (!use_cases_.EditBook(book->id, new_title, new_year, new_tags)) {
+        if (!use_cases_.EditBook(book.id, new_title, new_year, new_tags)) {
             output_ << "Book not found"sv << std::endl;
         }
     } catch (...) {
@@ -272,17 +295,21 @@ bool View::ShowBooks() const {
 
 bool View::ShowBook(std::istream& cmd_input) const {
     try {
-        auto book = SelectBook(cmd_input);
-        if (!book) {
+        auto res = SelectBook(cmd_input);
+        if (res.not_found) {
             output_ << "Book not found"sv << std::endl;
             return true;
         }
+        if (res.cancelled || !res.book) {
+            return true;
+        }
 
-        output_ << "Title: " << book->title << std::endl;
-        output_ << "Author: " << book->author_name << std::endl;
-        output_ << "Publication year: " << book->publication_year << std::endl;
-        if (!book->tags.empty()) {
-            output_ << "Tags: " << boost::algorithm::join(book->tags, ", ") << std::endl;
+        const auto& book = *res.book;
+        output_ << "Title: " << book.title << std::endl;
+        output_ << "Author: " << book.author_name << std::endl;
+        output_ << "Publication year: " << book.publication_year << std::endl;
+        if (!book.tags.empty()) {
+            output_ << "Tags: " << boost::algorithm::join(book.tags, ", ") << std::endl;
         }
     } catch (...) {
         output_ << "Book not found"sv << std::endl;
@@ -299,7 +326,11 @@ bool View::ShowAuthorBooks(std::istream& cmd_input) const {
         std::optional<domain::AuthorId> author_id;
         if (!name.empty()) {
             auto author = use_cases_.FindAuthorByName(name);
-            if (author) author_id = author->GetId();
+            if (author) {
+                author_id = author->GetId();
+            } else {
+                return true;
+            }
         } else {
             author_id = SelectAuthor();
         }
@@ -315,8 +346,10 @@ bool View::ShowAuthorBooks(std::istream& cmd_input) const {
 }
 
 std::optional<domain::AuthorId> View::SelectAuthor() const {
-    output_ << "Select author:" << std::endl;
     auto authors = use_cases_.GetAuthors();
+    if (authors.empty()) return std::nullopt;
+
+    output_ << "Select author:" << std::endl;
     int idx = 1;
     for (const auto& a : authors) {
         output_ << idx++ << " " << a.GetName() << std::endl;
@@ -335,7 +368,7 @@ std::optional<domain::AuthorId> View::SelectAuthor() const {
     }
 }
 
-std::optional<app::BookFullInfo> View::SelectBook(std::istream& cmd_input) const {
+SelectBookResult View::SelectBook(std::istream& cmd_input) const {
     std::string title;
     std::getline(cmd_input, title);
     boost::algorithm::trim(title);
@@ -343,28 +376,38 @@ std::optional<app::BookFullInfo> View::SelectBook(std::istream& cmd_input) const
     std::vector<app::BookFullInfo> candidates;
     if (!title.empty()) {
         candidates = use_cases_.FindBooksByTitle(title);
-        if (candidates.empty()) return std::nullopt;
-        if (candidates.size() == 1) return candidates[0];
+        if (candidates.empty()) {
+            return {.book = std::nullopt, .not_found = true, .cancelled = false};
+        }
+        if (candidates.size() == 1) {
+            return {.book = candidates[0], .not_found = false, .cancelled = false};
+        }
     } else {
         candidates = use_cases_.GetBooks();
-        if (candidates.empty()) return std::nullopt;
+        if (candidates.empty()) {
+            return {.book = std::nullopt, .not_found = false, .cancelled = true};
+        }
     }
 
     int idx = 1;
     for (const auto& b : candidates) {
         output_ << idx++ << " " << b.title << " by " << b.author_name << ", " << b.publication_year << std::endl;
     }
-    output_ << "Enter the book # or empty line to cancel:" << std::endl;
+    output_ << "Enter the book # or empty line to cancel" << std::endl;
 
     std::string str;
-    if (!std::getline(input_, str) || str.empty()) return std::nullopt;
+    if (!std::getline(input_, str) || str.empty()) {
+        return {.book = std::nullopt, .not_found = false, .cancelled = true};
+    }
 
     try {
         int book_idx = std::stoi(str) - 1;
-        if (book_idx < 0 || book_idx >= static_cast<int>(candidates.size())) return std::nullopt;
-        return candidates[book_idx];
+        if (book_idx < 0 || book_idx >= static_cast<int>(candidates.size())) {
+            return {.book = std::nullopt, .not_found = false, .cancelled = true};
+        }
+        return {.book = candidates[book_idx], .not_found = false, .cancelled = false};
     } catch (...) {
-        return std::nullopt;
+        return {.book = std::nullopt, .not_found = false, .cancelled = true};
     }
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
-#include <iosfwd>
+#include <istream>
+#include <ostream>
 #include <optional>
 #include <string>
 #include <vector>
@@ -12,6 +13,12 @@ class Menu;
 }
 
 namespace ui {
+
+struct SelectBookResult {
+    std::optional<app::BookFullInfo> book;
+    bool not_found = false;
+    bool cancelled = false;
+};
 
 class View {
 public:
@@ -31,8 +38,9 @@ private:
     bool ShowAuthorBooks(std::istream& cmd_input) const;
 
     std::optional<domain::AuthorId> SelectAuthor() const;
-    std::optional<app::BookFullInfo> SelectBook(std::istream& cmd_input) const;
+    SelectBookResult SelectBook(std::istream& cmd_input) const;
 
+private:
     menu::Menu& menu_;
     app::UseCases& use_cases_;
     std::istream& input_;
