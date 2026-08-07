@@ -39,8 +39,7 @@ private:
 
 class Database {
 public:
-    explicit Database(pqxx::connection connection)
-        : connection_{std::move(connection)} {}
+    explicit Database(pqxx::connection connection);
 
     AuthorRepositoryImpl& GetAuthors() { return authors_; }
     BookRepositoryImpl& GetBooks() { return books_; }

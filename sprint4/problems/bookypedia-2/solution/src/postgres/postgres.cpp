@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS authors (
 );
 )"_zv);
 
-    // 2. Книги (добавлен ON DELETE CASCADE для удаления книг при удалении автора)
+    // 2. Книги (с CASCADE удалением при удалении автора)
     work.exec(R"(
 CREATE TABLE IF NOT EXISTS books (
     id UUID PRIMARY KEY,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS books (
 );
 )"_zv);
 
-    // 3. Теги книг (новое в Bookypedia-2)
+    // 3. Теги книг
     work.exec(R"(
 CREATE TABLE IF NOT EXISTS book_tags (
     book_id UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -120,10 +120,6 @@ bool BookRepositoryImpl::Delete(const domain::BookId& id) {
 
 std::vector<domain::Book> BookRepositoryImpl::GetBooks() const {
     pqxx::read_transaction work{connection_};
-    // Требование сортировки Bookypedia-2:
-    // 1. По названию книги
-    // 2. По имени автора
-    // 3. По году публикации
     auto result = work.exec(R"(
 SELECT b.id, b.author_id, b.title, b.publication_year 
 FROM books b
