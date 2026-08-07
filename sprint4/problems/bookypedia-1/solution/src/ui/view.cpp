@@ -38,17 +38,11 @@ View::View(menu::Menu& menu, app::UseCases& use_cases, std::istream& input, std:
     , use_cases_{use_cases}
     , input_{input}
     , output_{output} {
-    menu_.AddAction(  //
-        "AddAuthor"s, "name"s, "Adds author"s, std::bind(&View::AddAuthor, this, ph::_1)
-        // либо
-        // [this](auto& cmd_input) { return AddAuthor(cmd_input); }
-    );
-    menu_.AddAction("AddBook"s, "<pub year> <title>"s, "Adds book"s,
-                    std::bind(&View::AddBook, this, ph::_1));
+    menu_.AddAction("AddAuthor"s, "name"s, "Adds author"s, std::bind(&View::AddAuthor, this, ph::_1));
+    menu_.AddAction("AddBook"s, "<pub year> <title>"s, "Adds book"s, std::bind(&View::AddBook, this, ph::_1));
     menu_.AddAction("ShowAuthors"s, {}, "Show authors"s, std::bind(&View::ShowAuthors, this));
     menu_.AddAction("ShowBooks"s, {}, "Show books"s, std::bind(&View::ShowBooks, this));
-    menu_.AddAction("ShowAuthorBooks"s, {}, "Show author books"s,
-                    std::bind(&View::ShowAuthorBooks, this));
+    menu_.AddAction("ShowAuthorBooks"s, {}, "Show author books"s, std::bind(&View::ShowAuthorBooks, this));
 }
 
 bool View::AddAuthor(std::istream& cmd_input) const {
@@ -56,6 +50,10 @@ bool View::AddAuthor(std::istream& cmd_input) const {
         std::string name;
         std::getline(cmd_input, name);
         boost::algorithm::trim(name);
+        if (name.empty()) {
+            output_ << "Failed to add author"sv << std::endl;
+            return true;
+        }
         use_cases_.AddAuthor(std::move(name));
     } catch (const std::exception&) {
         output_ << "Failed to add author"sv << std::endl;
@@ -66,7 +64,13 @@ bool View::AddAuthor(std::istream& cmd_input) const {
 bool View::AddBook(std::istream& cmd_input) const {
     try {
         if (auto params = GetBookParams(cmd_input)) {
-            assert(!"TODO: implement book adding");
+            use_cases_.AddBook(
+                domain::AuthorId::FromString(params->author_id),
+                params->title,
+                params->publication_year
+            );
+        } else {
+            output_ << "Failed to add book"sv << std::endl;
         }
     } catch (const std::exception&) {
         output_ << "Failed to add book"sv << std::endl;
@@ -85,13 +89,12 @@ bool View::ShowBooks() const {
 }
 
 bool View::ShowAuthorBooks() const {
-    // TODO: handle error
     try {
         if (auto author_id = SelectAuthor()) {
             PrintVector(output_, GetAuthorBooks(*author_id));
         }
     } catch (const std::exception&) {
-        throw std::runtime_error("Failed to Show Books");
+        // Игнорируем ошибку выбора автора
     }
     return true;
 }
@@ -99,17 +102,23 @@ bool View::ShowAuthorBooks() const {
 std::optional<detail::AddBookParams> View::GetBookParams(std::istream& cmd_input) const {
     detail::AddBookParams params;
 
-    cmd_input >> params.publication_year;
+    if (!(cmd_input >> params.publication_year)) {
+        return std::nullopt;
+    }
     std::getline(cmd_input, params.title);
     boost::algorithm::trim(params.title);
 
-    auto author_id = SelectAuthor();
-    if (not author_id.has_value())
+    if (params.title.empty()) {
         return std::nullopt;
-    else {
-        params.author_id = author_id.value();
-        return params;
     }
+
+    auto author_id = SelectAuthor();
+    if (!author_id.has_value()) {
+        return std::nullopt;
+    }
+
+    params.author_id = author_id.value();
+    return params;
 }
 
 std::optional<std::string> View::SelectAuthor() const {
@@ -126,12 +135,12 @@ std::optional<std::string> View::SelectAuthor() const {
     int author_idx;
     try {
         author_idx = std::stoi(str);
-    } catch (std::exception const&) {
+    } catch (const std::exception&) {
         throw std::runtime_error("Invalid author num");
     }
 
     --author_idx;
-    if (author_idx < 0 or author_idx >= authors.size()) {
+    if (author_idx < 0 || author_idx >= static_cast<int>(authors.size())) {
         throw std::runtime_error("Invalid author num");
     }
 
@@ -139,20 +148,32 @@ std::optional<std::string> View::SelectAuthor() const {
 }
 
 std::vector<detail::AuthorInfo> View::GetAuthors() const {
-    std::vector<detail::AuthorInfo> dst_autors;
-    assert(!"TODO: implement GetAuthors()");
-    return dst_autors;
+    std::vector<detail::AuthorInfo> dst_authors;
+    auto authors = use_cases_.GetAuthors();
+    dst_authors.reserve(authors.size());
+    for (const auto& author : authors) {
+        dst_authors.push_back({author.GetId().ToString(), author.GetName()});
+    }
+    return dst_authors;
 }
 
 std::vector<detail::BookInfo> View::GetBooks() const {
     std::vector<detail::BookInfo> books;
-    assert(!"TODO: implement GetBooks()");
+    auto domain_books = use_cases_.GetBooks();
+    books.reserve(domain_books.size());
+    for (const auto& book : domain_books) {
+        books.push_back({book.GetTitle(), book.GetPublicationYear()});
+    }
     return books;
 }
 
 std::vector<detail::BookInfo> View::GetAuthorBooks(const std::string& author_id) const {
     std::vector<detail::BookInfo> books;
-    assert(!"TODO: implement GetAuthorBooks()");
+    auto domain_books = use_cases_.GetAuthorBooks(domain::AuthorId::FromString(author_id));
+    books.reserve(domain_books.size());
+    for (const auto& book : domain_books) {
+        books.push_back({book.GetTitle(), book.GetPublicationYear()});
+    }
     return books;
 }
 
