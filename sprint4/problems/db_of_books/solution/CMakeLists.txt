@@ -4,12 +4,12 @@ project(book_manager CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Boost REQUIRED COMPONENTS json)
+find_package(Boost REQUIRED)
 find_package(libpqxx REQUIRED)
 
 add_executable(book_manager main.cpp)
 
 target_link_libraries(book_manager PRIVATE
-    Boost::json
+    Boost::headers
     libpqxx::pqxx
 )
