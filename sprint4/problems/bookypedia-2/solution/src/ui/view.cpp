@@ -106,9 +106,7 @@ bool View::DeleteAuthor(std::istream& cmd_input) const {
             }
         }
 
-        if (!use_cases_.DeleteAuthor(*author_id)) {
-            output_ << "Failed to delete author"sv << std::endl;
-        }
+        use_cases_.DeleteAuthor(*author_id);
     } catch (...) {
         output_ << "Failed to delete author"sv << std::endl;
     }
@@ -142,9 +140,12 @@ bool View::EditAuthor(std::istream& cmd_input) const {
         std::getline(input_, new_name);
         boost::algorithm::trim(new_name);
 
-        if (new_name.empty() || !use_cases_.EditAuthor(*author_id, new_name)) {
+        if (new_name.empty()) {
             output_ << "Failed to edit author"sv << std::endl;
+            return true;
         }
+
+        use_cases_.EditAuthor(*author_id, new_name);
     } catch (...) {
         output_ << "Failed to edit author"sv << std::endl;
     }
@@ -210,9 +211,7 @@ bool View::AddBook(std::istream& cmd_input) const {
         std::getline(input_, raw_tags);
         auto tags = NormalizeTags(raw_tags);
 
-        if (!use_cases_.AddBook(*author_id, title, pub_year, tags)) {
-            output_ << "Failed to add book"sv << std::endl;
-        }
+        use_cases_.AddBook(*author_id, title, pub_year, tags);
     } catch (...) {
         output_ << "Failed to add book"sv << std::endl;
     }
@@ -230,9 +229,7 @@ bool View::DeleteBook(std::istream& cmd_input) const {
             return true;
         }
 
-        if (!use_cases_.DeleteBook(res.book->id)) {
-            output_ << "Failed to delete book"sv << std::endl;
-        }
+        use_cases_.DeleteBook(res.book->id);
     } catch (...) {
         output_ << "Failed to delete book"sv << std::endl;
     }
@@ -276,9 +273,7 @@ bool View::EditBook(std::istream& cmd_input) const {
         std::getline(input_, raw_tags);
         auto new_tags = NormalizeTags(raw_tags);
 
-        if (!use_cases_.EditBook(book.id, new_title, new_year, new_tags)) {
-            output_ << "Book not found"sv << std::endl;
-        }
+        use_cases_.EditBook(book.id, new_title, new_year, new_tags);
     } catch (...) {
         output_ << "Book not found"sv << std::endl;
     }
