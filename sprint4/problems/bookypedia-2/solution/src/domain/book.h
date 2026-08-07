@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "author.h"
-#include "tagged_uuid.h"
+#include "../util/tagged_uuid.h" // <--- Исправлен путь
 
 namespace domain {
 
