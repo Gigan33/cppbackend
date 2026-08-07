@@ -1,67 +1,77 @@
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 #include "../src/app/use_cases_impl.h"
 #include "../src/domain/author.h"
-#include "../src/domain/book.h" // 1. Подключаем книги
+#include "../src/domain/book.h"
 
 namespace {
 
 struct MockAuthorRepository : domain::AuthorRepository {
-    std::vector<domain::Author> saved_authors;
+    std::vector<domain::Author> authors;
 
     void Save(const domain::Author& author) override {
-        saved_authors.emplace_back(author);
+        authors.push_back(author);
     }
 
-    // 2. Реализуем недостающий чистый виртуальный метод
+    bool Delete(const domain::AuthorId& /*id*/) override {
+        return true;
+    }
+
     std::vector<domain::Author> GetAuthors() const override {
-        return saved_authors;
+        return authors;
+    }
+
+    std::optional<domain::Author> FindByName(const std::string& /*name*/) const override {
+        return std::nullopt;
     }
 };
 
-// 3. Добавляем мок для репозитория книг
 struct MockBookRepository : domain::BookRepository {
-    std::vector<domain::Book> saved_books;
+    std::vector<domain::Book> books;
 
-    void Save(const domain::Book& book) override {
-        saved_books.emplace_back(book);
+    void Save(const domain::Book& book, const std::vector<std::string>& /*tags*/ = {}) override {
+        books.push_back(book);
+    }
+
+    bool Delete(const domain::BookId& /*id*/) override {
+        return true;
     }
 
     std::vector<domain::Book> GetBooks() const override {
-        return saved_books;
+        return books;
     }
 
     std::vector<domain::Book> GetAuthorBooks(const domain::AuthorId& author_id) const override {
         std::vector<domain::Book> result;
-        for (const auto& book : saved_books) {
+        for (const auto& book : books) {
             if (book.GetAuthorId() == author_id) {
                 result.push_back(book);
             }
         }
         return result;
     }
+
+    std::vector<domain::Book> FindBooksByTitle(const std::string& /*title*/) const override {
+        return {};
+    }
+
+    std::vector<std::string> GetBookTags(const domain::BookId& /*book_id*/) const override {
+        return {};
+    }
 };
 
 struct Fixture {
     MockAuthorRepository authors;
-    MockBookRepository books; // 4. Добавляем репозиторий книг в фикстуру
+    MockBookRepository books;
+    app::UseCasesImpl use_cases{authors, books};
 };
 
-}  // namespace
-
-SCENARIO_METHOD(Fixture, "Book Adding") {
-    GIVEN("Use cases") {
-        app::UseCasesImpl use_cases{authors, books}; // 5. Передаем оба репозитория
-
-        WHEN("Adding an author") {
-            const auto author_name = "Joanne Rowling";
-            use_cases.AddAuthor(author_name);
-
-            THEN("author with the specified name is saved to repository") {
-                REQUIRE(authors.saved_authors.size() == 1);
-                CHECK(authors.saved_authors.at(0).GetName() == author_name);
-                CHECK(authors.saved_authors.at(0).GetId() != domain::AuthorId{});
-            }
-        }
-    }
+TEST(UseCasesTests, AddAuthorSavesToRepository) {
+    Fixture fixture;
+    auto id = fixture.use_cases.AddAuthor("Author Name");
+    ASSERT_EQ(fixture.authors.authors.size(), 1u);
+    EXPECT_EQ(fixture.authors.authors.at(0).GetId(), id);
+    EXPECT_EQ(fixture.authors.authors.at(0).GetName(), "Author Name");
 }
+
+}  // namespace
