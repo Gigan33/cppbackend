@@ -1,6 +1,5 @@
 #include "postgres.h"
 
-#include <pqxx/zview.hxx>
 #include <boost/uuid/uuid_io.hpp>
 
 namespace postgres {
@@ -85,7 +84,6 @@ Database::Database(pqxx::connection connection)
     : connection_{std::move(connection)} {
     pqxx::work work{connection_};
     
-    // Создаем таблицу авторов
     work.exec(R"(
 CREATE TABLE IF NOT EXISTS authors (
     id UUID CONSTRAINT author_id_constraint PRIMARY KEY,
@@ -93,7 +91,6 @@ CREATE TABLE IF NOT EXISTS authors (
 );
 )"_zv);
 
-    // Создаем таблицу книг
     work.exec(R"(
 CREATE TABLE IF NOT EXISTS books (
     id UUID PRIMARY KEY,

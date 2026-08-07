@@ -1,7 +1,7 @@
 #pragma once
-#include <pqxx/connection>
-#include <pqxx/transaction>
+#include <pqxx/pqxx>
 #include <memory>
+#include <vector>
 
 #include "../domain/author.h"
 #include "../domain/book.h"
