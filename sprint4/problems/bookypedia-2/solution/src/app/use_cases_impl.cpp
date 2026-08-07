@@ -1,53 +1,112 @@
 #include "use_cases_impl.h"
 
 #include <algorithm>
-#include <string_view>
 
 namespace app {
-using namespace domain;
 
-namespace {
-
-// Вспомогательная функция для удаления пробелов в начале и конце строки
-std::string Trim(std::string_view str) {
-    auto start = str.find_first_not_of(" \t\r\n");
-    if (start == std::string_view::npos) {
-        return "";
-    }
-    auto end = str.find_last_not_of(" \t\r\n");
-    return std::string{str.substr(start, end - start + 1)};
+domain::AuthorId UseCasesImpl::AddAuthor(const std::string& name) {
+    auto id = domain::AuthorId::New();
+    authors_.Save({id, name});
+    return id;
 }
 
-}  // namespace
-
-bool UseCasesImpl::AddAuthor(const std::string& name) {
-    std::string trimmed_name = Trim(name);
-    if (trimmed_name.empty()) {
-        return false;
-    }
-    try {
-        authors_.Save({AuthorId::New(), trimmed_name});
-        return true;
-    } catch (...) {
-        // Ошибка выполнения запроса (например, дубликат UNIQUE)
-        return false;
-    }
+bool UseCasesImpl::DeleteAuthor(const domain::AuthorId& id) {
+    return authors_.Delete(id);
 }
 
-std::vector<Author> UseCasesImpl::GetAuthors() const {
+bool UseCasesImpl::EditAuthor(const domain::AuthorId& id, const std::string& new_name) {
+    authors_.Save({id, new_name});
+    return true;
+}
+
+std::vector<domain::Author> UseCasesImpl::GetAuthors() const {
     return authors_.GetAuthors();
 }
 
-void UseCasesImpl::AddBook(const AuthorId& author_id, const std::string& title, int pub_year) {
-    books_.Save({BookId::New(), author_id, Trim(title), pub_year});
+std::optional<domain::Author> UseCasesImpl::FindAuthorByName(const std::string& name) const {
+    return authors_.FindByName(name);
 }
 
-std::vector<Book> UseCasesImpl::GetBooks() const {
-    return books_.GetBooks();
+void UseCasesImpl::AddBook(const domain::AuthorId& author_id, const std::string& title, int pub_year, const std::vector<std::string>& tags) {
+    auto id = domain::BookId::New();
+    books_.Save({id, author_id, title, pub_year}, tags);
 }
 
-std::vector<Book> UseCasesImpl::GetAuthorBooks(const AuthorId& author_id) const {
-    return books_.GetAuthorBooks(author_id);
+bool UseCasesImpl::DeleteBook(const domain::BookId& id) {
+    return books_.Delete(id);
+}
+
+bool UseCasesImpl::EditBook(const domain::BookId& id, const std::string& new_title, int new_pub_year, const std::vector<std::string>& new_tags) {
+    auto details = GetBookDetails(id);
+    if (!details) return false;
+    books_.Save({id, details->author_id, new_title, new_pub_year}, new_tags);
+    return true;
+}
+
+std::string UseCasesImpl::GetAuthorNameById(const domain::AuthorId& id) const {
+    for (const auto& author : authors_.GetAuthors()) {
+        if (author.GetId() == id) return author.GetName();
+    }
+    return "";
+}
+
+std::vector<BookFullInfo> UseCasesImpl::GetBooks() const {
+    auto domain_books = books_.GetBooks();
+    std::vector<BookFullInfo> result;
+    result.reserve(domain_books.size());
+    for (const auto& b : domain_books) {
+        result.push_back({
+            b.GetId(),
+            b.GetAuthorId(),
+            b.GetTitle(),
+            GetAuthorNameById(b.GetAuthorId()),
+            b.GetPublicationYear(),
+            books_.GetBookTags(b.GetId())
+        });
+    }
+    return result;
+}
+
+std::vector<BookFullInfo> UseCasesImpl::GetAuthorBooks(const domain::AuthorId& author_id) const {
+    auto domain_books = books_.GetAuthorBooks(author_id);
+    std::string author_name = GetAuthorNameById(author_id);
+    std::vector<BookFullInfo> result;
+    result.reserve(domain_books.size());
+    for (const auto& b : domain_books) {
+        result.push_back({
+            b.GetId(),
+            b.GetAuthorId(),
+            b.GetTitle(),
+            author_name,
+            b.GetPublicationYear(),
+            books_.GetBookTags(b.GetId())
+        });
+    }
+    return result;
+}
+
+std::vector<BookFullInfo> UseCasesImpl::FindBooksByTitle(const std::string& title) const {
+    auto domain_books = books_.FindBooksByTitle(title);
+    std::vector<BookFullInfo> result;
+    result.reserve(domain_books.size());
+    for (const auto& b : domain_books) {
+        result.push_back({
+            b.GetId(),
+            b.GetAuthorId(),
+            b.GetTitle(),
+            GetAuthorNameById(b.GetAuthorId()),
+            b.GetPublicationYear(),
+            books_.GetBookTags(b.GetId())
+        });
+    }
+    return result;
+}
+
+std::optional<BookFullInfo> UseCasesImpl::GetBookDetails(const domain::BookId& id) const {
+    for (const auto& b : GetBooks()) {
+        if (b.id == id) return b;
+    }
+    return std::nullopt;
 }
 
 }  // namespace app
