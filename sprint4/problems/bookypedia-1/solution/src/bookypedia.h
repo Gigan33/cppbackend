@@ -1,19 +1,21 @@
 #pragma once
 
-#include <iosfwd>
+#include <string>
 
 #include "app/use_cases_impl.h"
 #include "postgres/postgres.h"
 
 namespace bookypedia {
 
+struct AppConfig {
+    std::string db_url;
+};
+
 class Application {
 public:
-    explicit Application(pqxx::connection conn)
-        : db_{std::move(conn)} {
-    }
+    explicit Application(const AppConfig& config);
 
-    void Run(std::istream& input, std::ostream& output);
+    void Run();
 
 private:
     postgres::Database db_;
