@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/trim.hpp>
+#include <cctype>
 #include <iostream>
 #include <set>
 #include <sstream>
@@ -64,7 +65,7 @@ View::View(menu::Menu& menu, app::UseCases& use_cases, std::istream& input, std:
     menu_.AddAction("EditBook"s, "title_or_empty"s, "Edits book"s, [this](auto& in) { return EditBook(in); });
     menu_.AddAction("ShowBooks"s, {}, "Shows books"s, [this](auto&) { return ShowBooks(); });
     menu_.AddAction("ShowBook"s, "title_or_empty"s, "Shows detailed book info"s, [this](auto& in) { return ShowBook(in); });
-    menu_.AddAction("ShowAuthorBooks"s, {}, "Shows author books"s, [this](auto& in) { return ShowAuthorBooks(in); });
+    menu_.AddAction("ShowAuthorBooks"s, "name_or_empty"s, "Shows author books"s, [this](auto& in) { return ShowAuthorBooks(in); });
 }
 
 bool View::AddAuthor(std::istream& cmd_input) const {
@@ -235,7 +236,16 @@ bool View::EditBook(std::istream& cmd_input) const {
         std::string year_str;
         std::getline(input_, year_str);
         boost::algorithm::trim(year_str);
-        int new_year = year_str.empty() ? book->publication_year : std::stoi(year_str);
+
+        int new_year = book->publication_year;
+        if (!year_str.empty()) {
+            try {
+                new_year = std::stoi(year_str);
+            } catch (...) {
+                output_ << "Book not found"sv << std::endl;
+                return true;
+            }
+        }
 
         std::string current_tags = boost::algorithm::join(book->tags, ", ");
         output_ << "Enter tags (current tags: " << current_tags << "):" << std::endl;
@@ -263,7 +273,10 @@ bool View::ShowBooks() const {
 bool View::ShowBook(std::istream& cmd_input) const {
     try {
         auto book = SelectBook(cmd_input);
-        if (!book) return true;
+        if (!book) {
+            output_ << "Book not found"sv << std::endl;
+            return true;
+        }
 
         output_ << "Title: " << book->title << std::endl;
         output_ << "Author: " << book->author_name << std::endl;
@@ -271,13 +284,26 @@ bool View::ShowBook(std::istream& cmd_input) const {
         if (!book->tags.empty()) {
             output_ << "Tags: " << boost::algorithm::join(book->tags, ", ") << std::endl;
         }
-    } catch (...) {}
+    } catch (...) {
+        output_ << "Book not found"sv << std::endl;
+    }
     return true;
 }
 
-bool View::ShowAuthorBooks(std::istream&) const {
+bool View::ShowAuthorBooks(std::istream& cmd_input) const {
     try {
-        auto author_id = SelectAuthor();
+        std::string name;
+        std::getline(cmd_input, name);
+        boost::algorithm::trim(name);
+
+        std::optional<domain::AuthorId> author_id;
+        if (!name.empty()) {
+            auto author = use_cases_.FindAuthorByName(name);
+            if (author) author_id = author->GetId();
+        } else {
+            author_id = SelectAuthor();
+        }
+
         if (!author_id) return true;
 
         int idx = 1;
@@ -300,10 +326,13 @@ std::optional<domain::AuthorId> View::SelectAuthor() const {
     std::string str;
     if (!std::getline(input_, str) || str.empty()) return std::nullopt;
 
-    int author_idx = std::stoi(str) - 1;
-    if (author_idx < 0 || author_idx >= static_cast<int>(authors.size())) return std::nullopt;
-
-    return authors[author_idx].GetId();
+    try {
+        int author_idx = std::stoi(str) - 1;
+        if (author_idx < 0 || author_idx >= static_cast<int>(authors.size())) return std::nullopt;
+        return authors[author_idx].GetId();
+    } catch (...) {
+        return std::nullopt;
+    }
 }
 
 std::optional<app::BookFullInfo> View::SelectBook(std::istream& cmd_input) const {
@@ -330,10 +359,13 @@ std::optional<app::BookFullInfo> View::SelectBook(std::istream& cmd_input) const
     std::string str;
     if (!std::getline(input_, str) || str.empty()) return std::nullopt;
 
-    int book_idx = std::stoi(str) - 1;
-    if (book_idx < 0 || book_idx >= static_cast<int>(candidates.size())) return std::nullopt;
-
-    return candidates[book_idx];
+    try {
+        int book_idx = std::stoi(str) - 1;
+        if (book_idx < 0 || book_idx >= static_cast<int>(candidates.size())) return std::nullopt;
+        return candidates[book_idx];
+    } catch (...) {
+        return std::nullopt;
+    }
 }
 
 }  // namespace ui
