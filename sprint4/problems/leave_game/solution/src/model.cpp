@@ -543,10 +543,13 @@ std::vector<std::shared_ptr<Dog>> GameSession::Tick(double dt, double retirement
         }
     }
 
+    constexpr double EPSILON = 1e-6;
+
     std::vector<std::shared_ptr<Dog>> retired;
     if (retirement_time > 0.0) {
         for (auto it = dogs_.begin(); it != dogs_.end(); ) {
-            if (*it && (*it)->GetIdleTime() >= retirement_time) {
+            // Добавляем EPSILON к времени неактивности
+            if (*it && ((*it)->GetIdleTime() + EPSILON >= retirement_time)) {
                 retired.push_back(*it);
                 it = dogs_.erase(it);
             } else {
