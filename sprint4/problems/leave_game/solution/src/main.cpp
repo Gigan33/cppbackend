@@ -156,7 +156,7 @@ int main(int argc, char* argv[]) {
         }
         auto connection_pool = std::make_shared<postgres::ConnectionPool>(
             std::max(4u, num_threads), std::string(db_url_env)
-        )
+        );
         auto records_repo = std::make_shared<postgres::RecordsRepositoryImpl>(connection_pool);
         handler->SetRecordsRepository(records_repo);
 
