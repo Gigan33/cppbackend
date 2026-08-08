@@ -182,6 +182,8 @@ bool View::AddBook(std::istream& cmd_input) const {
         boost::algorithm::trim(author_name);
 
         std::optional<domain::AuthorId> author_id;
+        bool declined_new_author = false;
+
         if (!author_name.empty()) {
             auto author = use_cases_.FindAuthorByName(author_name);
             if (!author) {
@@ -191,6 +193,10 @@ bool View::AddBook(std::istream& cmd_input) const {
                 boost::algorithm::trim(answer);
                 if (answer == "y" || answer == "Y") {
                     author_id = use_cases_.AddAuthor(author_name);
+                } else {
+                    // User declined creating the new author — bail out
+                    // immediately, without asking for tags.
+                    declined_new_author = true;
                 }
             } else {
                 author_id = author->GetId();
@@ -199,7 +205,15 @@ bool View::AddBook(std::istream& cmd_input) const {
             author_id = SelectAuthor();
         }
 
-        // Вычитываем теги ДО проверки наличия автора, чтобы не загрязнять stdin
+        if (declined_new_author) {
+            output_ << "Failed to add book"sv << std::endl;
+            return true;
+        }
+
+        // Read tags here (before the final author check) so that a
+        // cancelled list-selection (SelectAuthor -> nullopt) still
+        // consumes the tags line and doesn't pollute stdin for the
+        // next command.
         output_ << "Enter tags (comma separated):" << std::endl;
         std::string raw_tags;
         std::getline(input_, raw_tags);
