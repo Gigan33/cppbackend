@@ -528,55 +528,63 @@ std::vector<std::shared_ptr<Dog>> GameSession::Tick(double dt, double retirement
     }
 
     if (loot_generator_) {
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::duration<double>(dt)
-        );
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::duration<double>(dt)
+            );
 
-        unsigned count = loot_generator_->Generate(
-            duration, 
-            lost_objects_.size(), 
-            dogs_.size()
-        );
+            unsigned count = loot_generator_->Generate(
+                duration, 
+                lost_objects_.size(), 
+                dogs_.size()
+            );
 
-        for (unsigned i = 0; i < count; ++i) {
-            GenerateAndAddLootItem();
+            for (unsigned i = 0; i < count; ++i) {
+                GenerateAndAddLootItem();
+            }
         }
+
+        // Возвращаем неактивных собак из сессии
+        return RemoveRetiredDogs(retirement_time);
     }
 
-    constexpr double EPSILON = 1e-6;
+std::vector<std::shared_ptr<Dog>> GameSession::RemoveRetiredDogs(double retirement_time) {
+        std::vector<std::shared_ptr<Dog>> retired;
 
-    std::vector<std::shared_ptr<Dog>> retired;
-    if (retirement_time > 0.0) {
+        // Если таймаут увольнения не задан или отключен (<= 0.0), сразу возвращаем пустой вектор
+        if (retirement_time <= 0.0) {
+            return retired;
+        }
+
         for (auto it = dogs_.begin(); it != dogs_.end(); ) {
-            // Добавляем EPSILON к времени неактивности
-            if (*it && ((*it)->GetIdleTime() + EPSILON >= retirement_time)) {
+            // Проверяем валидность указателя и достижение порога неактивности
+            if (*it && (*it)->GetIdleTime() >= retirement_time) {
                 retired.push_back(*it);
-                it = dogs_.erase(it);
+                it = dogs_.erase(it); // Извлекаем собаку из сессии и обновляем итератор
             } else {
                 ++it;
             }
         }
-    }
-    return retired;
-}
 
-void GameSession::GenerateLoot(double dt) {
-    if (!loot_generator_) {
-        return;
+        return retired;
     }
 
-    auto time_delta = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::duration<double>(dt)
-    );
+    void GameSession::GenerateLoot(double dt) {
+        if (!loot_generator_) {
+            return;
+        }
 
-    unsigned int looter_count = static_cast<unsigned int>(dogs_.size());
-    unsigned int current_loot_count = static_cast<unsigned int>(lost_objects_.size());
+        auto time_delta = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::duration<double>(dt)
+        );
 
-    unsigned int loot_to_generate = loot_generator_->Generate(time_delta, current_loot_count, looter_count);
+        unsigned int looter_count = static_cast<unsigned int>(dogs_.size());
+        unsigned int current_loot_count = static_cast<unsigned int>(lost_objects_.size());
 
-    for (unsigned int i = 0; i < loot_to_generate; ++i) {
-        GenerateAndAddLootItem();
+        unsigned int loot_to_generate = loot_generator_->Generate(time_delta, current_loot_count, looter_count);
+
+        for (unsigned int i = 0; i < loot_to_generate; ++i) {
+            GenerateAndAddLootItem();
+        }
     }
-}
 
 }  // namespace model
