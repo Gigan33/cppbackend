@@ -396,6 +396,7 @@ public:
 
     std::shared_ptr<Dog> CreateDog(const std::string& name, bool randomize_spawn_points);
     geom::Point2D GetRandomPosition();
+    std::vector<std::shared_ptr<Dog>> RemoveRetiredDogs(double retirement_time);
 
     const std::vector<std::shared_ptr<Dog>>& GetDogs() const noexcept { return dogs_; }
     const std::map<unsigned int, LostObject>& GetLostObjects() const noexcept { return lost_objects_; }
