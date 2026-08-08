@@ -144,8 +144,15 @@ void Dog::UpdatePosition(double dt, const Map* map) {
         for (const auto* road : current_roads) {
             limit = std::min(limit, GetRoadBounds(*road).min_y);
         }
-        max_allowed_y = std::max(next_pos.y, limit);
-        speed_.y = 0.0;
+        
+        if (next_pos.y < limit) {
+            // Врезались в верхнюю границу
+            max_allowed_y = limit;
+            speed_.y = 0.0;
+        } else {
+            // Движение в пределах дороги — сохраняем позицию и скорость
+            max_allowed_y = next_pos.y;
+        }
     }
 
     position_.x = max_allowed_x;
@@ -461,8 +468,8 @@ std::vector<std::shared_ptr<Dog>> GameSession::Tick(double dt, double retirement
         if (!dog) continue;
         
         start_positions.push_back(dog->GetPosition());
+        dog->UpdatePlayAndIdleTime(dt);
         dog->UpdatePosition(dt, map_);
-        dog->UpdatePlayAndIdleTime(dt); // <-- Обновление времени простоя
 
         gatherers.push_back({
             {start_positions.back().x, start_positions.back().y},
