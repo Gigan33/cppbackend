@@ -544,15 +544,16 @@ std::vector<std::shared_ptr<Dog>> GameSession::Tick(double dt, double retirement
     }
 
     std::vector<std::shared_ptr<Dog>> retired;
-    for (auto it = dogs_.begin(); it != dogs_.end(); ) {
-        if (*it && (*it)->GetIdleTime() >= retirement_time) {
-            retired.push_back(*it);
-            it = dogs_.erase(it);
-        } else {
-            ++it;
+    if (retirement_time > 0.0) {
+        for (auto it = dogs_.begin(); it != dogs_.end(); ) {
+            if (*it && (*it)->GetIdleTime() >= retirement_time) {
+                retired.push_back(*it);
+                it = dogs_.erase(it);
+            } else {
+                ++it;
+            }
         }
     }
-
     return retired;
 }
 

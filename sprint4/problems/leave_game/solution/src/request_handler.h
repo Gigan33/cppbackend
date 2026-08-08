@@ -437,12 +437,14 @@ public:
             return MakeMethodNotAllowedResponse("POST", version, keep_alive);
         }
 
-        auto ct_it = req.find(http::field::content_type);
-        if (ct_it == req.end() || ct_it->value() != "application/json") {
-            return MakeJoinErrorResponse(http::status::bad_request, "invalidArgument", "Invalid content type", version, keep_alive);
-        }
-
+        // 1. Сначала проверяем авторизацию (401 имеет приоритет над ошибками тела/заголовков запроса)
         return ExecuteAuthorized(req, version, keep_alive, [this, &req, version, keep_alive](auto player) {
+            // 2. Проверяем Content-Type внутри авторизованного контекста
+            auto ct_it = req.find(http::field::content_type);
+            if (ct_it == req.end() || ct_it->value().rfind("application/json", 0) != 0) {
+                return MakeJoinErrorResponse(http::status::bad_request, "invalidArgument", "Invalid content type", version, keep_alive);
+            }
+
             try {
                 auto json_doc = json::parse(req.body());
                 if (!json_doc.is_object() || !json_doc.as_object().contains("move")) {
@@ -458,6 +460,10 @@ public:
                 auto session = player->GetSession();
                 const model::Map* map = session->GetMap();
                 double speed = map ? map->GetDogSpeed() : game_.GetDefaultDogSpeed();
+
+                // 3. Сбрасываем таймер неактивности игрока при получении действия
+                // (Укажите вызов метода сброса активности, реализованный в вашем Player/Dog)
+                player->ResetInactivity(); 
 
                 player->GetDog().Move(move_action, speed);
 
