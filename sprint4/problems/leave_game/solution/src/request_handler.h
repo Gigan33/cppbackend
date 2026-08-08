@@ -178,16 +178,16 @@ public:
         save_state_fn_ = std::move(save_state_fn);
     }
 
-    void SetRecordsRepository(std::shared_ptr<records::Repository> repo) {
+     void SetRecordsRepository(std::shared_ptr<records::Repository> repo) {
         records_repo_ = repo;
         game_.SetRetirementCallback([repo](const model::RetiredPlayerRecord& record) {
-            std::async(std::launch::async, [repo, record]() {
+            std::thread([repo, record]() {
                 try {
                     repo->Save(record);
                 } catch (const std::exception& ex) {
                     BOOST_LOG_TRIVIAL(error) << "Failed to save retired player record: " << ex.what();
                 }
-            });
+            }).detach();
         });
     }
 
@@ -204,15 +204,15 @@ public:
                 auto filename = state_file_;
                 auto save_fn = save_state_fn_;
 
-                std::async(std::launch::async, [filename = std::move(filename), 
-                                            state = std::move(state), 
-                                            save_fn = std::move(save_fn)]() mutable {
+                std::thread([filename = std::move(filename), 
+                            state = std::move(state), 
+                            save_fn = std::move(save_fn)]() mutable {
                     try {
                         save_fn(filename, state);
                     } catch (const std::exception& ex) {
                         BOOST_LOG_TRIVIAL(error) << "Failed to auto-save state: " << ex.what();
                     }
-                });
+                }).detach();
             }
         }
     }

@@ -155,8 +155,8 @@ int main(int argc, char* argv[]) {
             throw std::runtime_error("GAME_DB_URL environment variable not found");
         }
         auto connection_pool = std::make_shared<postgres::ConnectionPool>(
-            std::max(1u, num_threads), std::string(db_url_env)
-        );
+            std::max(4u, num_threads), std::string(db_url_env)
+        )
         auto records_repo = std::make_shared<postgres::RecordsRepositoryImpl>(connection_pool);
         handler->SetRecordsRepository(records_repo);
 
