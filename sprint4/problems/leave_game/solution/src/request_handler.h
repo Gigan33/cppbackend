@@ -463,7 +463,7 @@ public:
 
                 // 3. Сбрасываем таймер неактивности игрока при получении действия
                 // (Укажите вызов метода сброса активности, реализованный в вашем Player/Dog)
-                player->ResetInactivity(); 
+                player->GetDog().ResetIdleTime();
 
                 player->GetDog().Move(move_action, speed);
 

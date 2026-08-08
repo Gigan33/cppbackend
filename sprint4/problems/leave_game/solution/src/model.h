@@ -330,6 +330,10 @@ public:
         }
     }
 
+    void ResetIdleTime() {
+        idle_time_ = 0.0;
+    }
+
     void UpdatePosition(double dt, const Map* map);
 
     bool IsBagFull() const noexcept { 
