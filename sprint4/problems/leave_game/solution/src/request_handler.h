@@ -178,16 +178,14 @@ public:
         save_state_fn_ = std::move(save_state_fn);
     }
 
-     void SetRecordsRepository(std::shared_ptr<records::Repository> repo) {
+    void SetRecordsRepository(std::shared_ptr<records::Repository> repo) {
         records_repo_ = repo;
         game_.SetRetirementCallback([repo](const model::RetiredPlayerRecord& record) {
-            std::thread([repo, record]() {
-                try {
-                    repo->Save(record);
-                } catch (const std::exception& ex) {
-                    BOOST_LOG_TRIVIAL(error) << "Failed to save retired player record: " << ex.what();
-                }
-            }).detach();
+            try {
+                repo->Save(record); // Синхронно сохраняем в базу
+            } catch (const std::exception& ex) {
+                BOOST_LOG_TRIVIAL(error) << "Failed to save retired player record: " << ex.what();
+            }
         });
     }
 
