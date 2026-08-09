@@ -133,11 +133,9 @@ int main(int argc, char* argv[]) {
             return EXIT_SUCCESS;
         }
 
-        // 1. Загружаем карту и конфигурацию
         model::Game game = json_loader::LoadGame(args->config_file);
         game.SetRandomizeSpawnPoints(args->randomize_spawn_points); 
 
-        // 2. Инициализируем сетевые сущности ДО создания хэндлера
         const unsigned num_threads = std::thread::hardware_concurrency();
         net::io_context ioc(num_threads);
 
@@ -145,7 +143,6 @@ int main(int argc, char* argv[]) {
 
         bool auto_tick_enabled = args->tick_period.has_value();
 
-        // 3. Создаем хэндлер ПЕРЕД восстановлением состояния
         auto handler = std::make_shared<http_handler::RequestHandler>(
             game, args->www_root, *api_strand, auto_tick_enabled
         );
@@ -160,7 +157,6 @@ int main(int argc, char* argv[]) {
         auto records_repo = std::make_shared<postgres::RecordsRepositoryImpl>(connection_pool);
         handler->SetRecordsRepository(records_repo);
 
-        // 4. ВОССТАНАВЛИВАЕМ СОСТОЯНИЕ ЧЕРЕЗ ХЭНДЛЕР
         if (!args->state_file.empty() && std::filesystem::exists(args->state_file)) {
             try {
                 std::ifstream ifs(args->state_file, std::ios::binary);
@@ -168,7 +164,6 @@ int main(int argc, char* argv[]) {
                 serialization::SavedState saved_state;
                 ia >> saved_state;
 
-                // ВЫЗЫВАЕМ МЕТОД У ХЭНДЛЕРА, А НЕ У ИГРЫ
                 handler->RestoreState(saved_state); 
                 BOOST_LOG_TRIVIAL(info) << "State successfully restored from " << args->state_file;
             } catch (const std::exception& ex) {
@@ -176,7 +171,6 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // 5. ПЕРЕДАЕМ НАСТРОЙКИ СОХРАНЕНИЯ В ХЭНДЛЕР
         if (!args->state_file.empty()) {
             std::optional<std::chrono::milliseconds> save_period;
             if (args->save_state_period) {
@@ -185,7 +179,6 @@ int main(int argc, char* argv[]) {
             handler->SetSaveOptions(args->state_file, save_period, &SaveState);
         }
 
-        // --- ПЕРЕХВАТ СИГНАЛОВ И СОХРАНЕНИЕ ПРИ ВЫХОДЕ ---
         net::signal_set signals(ioc, SIGINT, SIGTERM);
         signals.async_wait([&ioc, api_strand, handler, state_file = args->state_file](const boost::system::error_code& ec, int) {
             if (ec) {
@@ -218,7 +211,6 @@ int main(int argc, char* argv[]) {
             logging_handler(std::forward<decltype(req)>(req), std::forward<decltype(send)>(send));
         });
 
-        // --- НАСТРОЙКА ИГРОВОГО ТИКЕРА (АВТО-ТИК) ---
         std::shared_ptr<util::Ticker> game_ticker;
         if (args->tick_period) {
             std::chrono::milliseconds period{*args->tick_period};

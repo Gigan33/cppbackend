@@ -22,7 +22,6 @@
 #include "loot_generator.h"
 #include "tagged.h"
 
-// Forward declaration для избежания циклической зависимости
 namespace serialization {
 class SavedState;
 }
@@ -508,8 +507,6 @@ public:
 
     Token AddPlayer(std::shared_ptr<Player> player) {
         Token token{GenerateToken()};
-        
-        // Пересоздаем токен, пока не найдем уникальный
         while (token_to_player_.count(token) > 0) {
             token = Token{GenerateToken()};
         }

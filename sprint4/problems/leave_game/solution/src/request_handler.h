@@ -109,7 +109,6 @@ inline std::string_view GetMimeType(const fs::path& filepath) {
     return "application/octet-stream";
 }
 
-// Проверка защиты от выходя за пределы корневой папки (Path Traversal Protection)
 inline bool IsSubpath(fs::path path, fs::path base) {
     path = fs::weakly_canonical(path);
     base = fs::weakly_canonical(base);
@@ -182,7 +181,7 @@ public:
         records_repo_ = repo;
         game_.SetRetirementCallback([repo](const model::RetiredPlayerRecord& record) {
             try {
-                repo->Save(record); // Синхронно сохраняем в базу
+                repo->Save(record);
             } catch (const std::exception& ex) {
                 BOOST_LOG_TRIVIAL(error) << "Failed to save retired player record: " << ex.what();
             }
@@ -434,10 +433,7 @@ public:
         if (req.method() != http::verb::post) {
             return MakeMethodNotAllowedResponse("POST", version, keep_alive);
         }
-
-        // 1. Сначала проверяем авторизацию (401 имеет приоритет над ошибками тела/заголовков запроса)
         return ExecuteAuthorized(req, version, keep_alive, [this, &req, version, keep_alive](auto player) {
-            // 2. Проверяем Content-Type внутри авторизованного контекста
             player->GetDog().ResetIdleTime();
             auto ct_it = req.find(http::field::content_type);
             if (ct_it == req.end() || ct_it->value().rfind("application/json", 0) != 0) {
@@ -605,7 +601,7 @@ public:
                         response = HandleGetGameState(req, req.version(), req.keep_alive());
                     } else if (path == ACTION_ENDPOINT) {
                         response = HandlePlayerAction(req, req.version(), req.keep_alive());
-                    } else if (path == RECORDS_ENDPOINT) { // 3. Новая ветка для рекордов
+                    } else if (path == RECORDS_ENDPOINT) {
                         response = HandleGetRecords(req, query, req.version(), req.keep_alive());
                     } else if (path == TICK_ENDPOINT) {
                         if (auto_tick_enabled_) {
